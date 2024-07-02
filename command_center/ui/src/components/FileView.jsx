@@ -1,6 +1,5 @@
-import { useParams } from 'react-router-dom';
 import MDEditor from '@uiw/react-md-editor';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import '../App.css';
 
 function FileView(note) {
