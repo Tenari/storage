@@ -2,10 +2,11 @@ import MDEditor from '@uiw/react-md-editor';
 import { useState, useEffect } from 'react';
 import '../App.css';
 
-function FileView(filePath, note) {
+function FileView({note, filePath}) {
     const [content, setContent] = useState('');
     useEffect(() => {
-        setContent(note.note);
+        console.log("NOTE", note)
+        setContent(note);
     }, [note]);
 
     return (

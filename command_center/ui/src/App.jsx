@@ -4,13 +4,16 @@ import FileView from './components/FileView';
 import Home from './components/Home';
 import FlexSearch from "../node_modules/flexsearch/dist/flexsearch.bundle.module.min.js";
 
-
 function FileViewWrapper({ notes }) {
   const { filePath: rawFilePath } = useParams();
-  const filePath = rawFilePath.startsWith('root/') ? rawFilePath.slice(5) : rawFilePath;
+  console.log(rawFilePath);
+  const prefix = 'root/';
+  const filePath = rawFilePath.startsWith(prefix) ? rawFilePath.slice(prefix.length) : rawFilePath;
   const note = notes[filePath];
+  const prefix2 = 'root/command_center:appattacc.os/files';
+  const trimmedFilePath = rawFilePath.startsWith(prefix2) ? rawFilePath.slice(prefix2.length) : rawFilePath;
   console.log("NOTE IN WRAPPER", note);
-  return <FileView filePath={filePath} note={note} />;
+  return <FileView note={note} filePath={trimmedFilePath} />;
 }
 
 function App() {
