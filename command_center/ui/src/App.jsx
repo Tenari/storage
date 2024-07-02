@@ -36,6 +36,7 @@ function App() {
   useEffect(() => {
     webSocket();
     fetchNotes();
+    fetchBackupData();
   }, []);
 
   const options = {
@@ -187,6 +188,21 @@ function App() {
       document.getElementById('result').textContent = 'Failed to fetch status.';
     }
   }
+
+  const fetchBackupData = async () => {
+    try {
+        const response = await fetch('/main:command_center:appattacc.os/fetch_backup_data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        const resp = await response.json();
+        console.log("response:", resp);
+    } catch (error) {
+        console.error("error on backup:", error);
+    }
+}
 
   return (
     <HashRouter>

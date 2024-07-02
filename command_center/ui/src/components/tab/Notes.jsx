@@ -22,9 +22,6 @@ function Notes({ searchNotes, notesBackupProvider, notesBackedUpAt, lastBackupSi
         }
     }
 
-    useEffect(() => {
-        backupRequest();
-    }, []);
 
     return (
         <div id="Notes" className="tabcontent">

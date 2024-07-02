@@ -180,6 +180,8 @@ fn handle_backup_message(
     message: &Message,
     data_password_hash: &mut String,
     backups_time_map: &mut HashMap<String, DateTime<Utc>>,
+    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
+    notes_backup_provider: &mut Option<NodeId>
 ) -> anyhow::Result<()> {
     match &message {
         Message::Request { body, .. } => {
@@ -285,8 +287,8 @@ fn handle_backup_message(
                             .target(&our_worker_address)
                             .send()?;
 
-                        backups_time_map.insert(our.node.clone(), chrono::Utc::now());
-                        println!("backups_time_map: {:#?}", backups_time_map);
+                        *notes_last_backed_up_at = Some(chrono::Utc::now());
+                        *notes_backup_provider = Some(message.source().node.clone());
 
                         println!("data_password_hash before: {}", data_password_hash);
                         *data_password_hash = String::new();
@@ -310,6 +312,9 @@ fn handle_http_request(
     state: &mut Option<State>,
     body: &[u8],
     pkgs: &HashMap<Pkg, Address>,
+    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
+    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
+    notes_backup_provider: &mut Option<NodeId>
 ) -> anyhow::Result<()> {
     let http_request = http::HttpServerRequest::from_bytes(body)?
         .request()
@@ -342,8 +347,25 @@ fn handle_http_request(
             }
             Err(e) => Err(e),
         },
-        "/backup" => {
-            println!("got /backup request");
+        "/fetch_backup_data" => {
+            println!("got /fetch_backup_data");
+            let backup_data = serde_json::to_vec(&serde_json::json!({
+                "backups_time_map": backups_time_map,
+                "notes_last_backed_up_at": notes_last_backed_up_at,
+                "notes_backup_provider": notes_backup_provider,
+            }))?;
+            http::send_response(
+                http::StatusCode::OK,
+                Some(HashMap::from([(
+                    "Content-Type".to_string(),
+                    "application/json".to_string(),
+                )])),
+                backup_data,
+            );
+            Ok(())
+        }
+        "/backup_request" => {
+            println!("got /backup_request");
             println!("http request: {:#?}", http_request);
             let deserialized: Result<serde_json::Value, _> = serde_json::from_slice(&bytes);
             match deserialized {
@@ -370,9 +392,12 @@ fn handle_http_message(
     message: &Message,
     state: &mut Option<State>,
     pkgs: &HashMap<Pkg, Address>,
+    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
+    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
+    notes_backup_provider: &mut Option<NodeId>
 ) -> anyhow::Result<()> {
     match message {
-        Message::Request { ref body, .. } => handle_http_request(our, state, body, pkgs),
+        Message::Request { ref body, .. } => handle_http_request(our, state, body, pkgs, backups_time_map, notes_last_backed_up_at, notes_backup_provider),
         Message::Response { .. } => Ok(()),
     }
 }
@@ -610,16 +635,18 @@ fn handle_message(
     our_files_path: &String,
     retrieved_encrypted_backup_path: &String,
     backups_time_map: &mut HashMap<String, DateTime<Utc>>,
+    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
+    notes_backup_provider: &mut Option<NodeId>,
 ) -> anyhow::Result<()> {
     let message = await_message()?;
 
     if message.source().node != our.node {
-        handle_backup_message(our, &message, data_password_hash, backups_time_map)?;
+        handle_backup_message(our, &message, data_password_hash, backups_time_map, notes_last_backed_up_at, notes_backup_provider)?;
     }
 
     match message.source().process.to_string().as_str() {
         "http_server:distro:sys" | "http_client:distro:sys" => {
-            handle_http_message(&our, &message, state, pkgs)
+            handle_http_message(&our, &message, state, pkgs, backups_time_map, notes_last_backed_up_at, notes_backup_provider)
         }
         // TODO: add to handle_http_message later, when i implement the ui
         // for now, it takes inputs from the teriminal
@@ -649,7 +676,8 @@ fn init(our: Address) {
             "/status",
             "/notes",
             "/import_notes",
-            "/backup",
+            "/backup_request",
+            "/fetch_backup_data"
         ],
     );
 
@@ -716,6 +744,8 @@ fn init(our: Address) {
     let mut data_password_hash = "".to_string();
 
     let mut backups_time_map: HashMap<NodeId, DateTime<Utc>> = HashMap::new();
+    let mut notes_last_backed_up_at: Option<DateTime<Utc>> = None;
+    let mut notes_backup_provider: Option<NodeId> = None;
 
     loop {
         match handle_message(
@@ -727,6 +757,8 @@ fn init(our: Address) {
             &our_files_path,
             &retrieved_encrypted_backup_path,
             &mut backups_time_map,
+            &mut notes_last_backed_up_at,
+            &mut notes_backup_provider,
         ) {
             Ok(_) => {}
             Err(e) => println!("Error: {:?}", e),
