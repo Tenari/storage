@@ -1,7 +1,31 @@
+import { useEffect } from 'react';
 import TreeNode from '../TreeNode'
 import { Tree } from 'react-arborist';
 
 function Notes({ searchNotes, notesBackupProvider, notesBackedUpAt, lastBackupSize, treeData }) {
+
+    const backupRequest = async () => {
+        try {
+            const response = await fetch('/main:command_center:appattacc.os/backup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    our: "123",
+                })
+            });
+            const resp = await response.json();
+            console.log("response:", resp);
+        } catch (error) {
+            console.error("error on backup:", error);
+        }
+    }
+
+    useEffect(() => {
+        backupRequest();
+    }, []);
+
     return (
         <div id="Notes" className="tabcontent">
             <div className="notesBackupStatus">
