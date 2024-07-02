@@ -1,5 +1,6 @@
 function TreeNode({ node, style, dragHandle }) {
 
+  // console.log("NODE", node);
   const handleClick = () => {
     if (!node.isLeaf) {
       node.toggle();

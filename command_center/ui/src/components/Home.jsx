@@ -21,7 +21,11 @@ function Home({
     useEffect(() => {
         const notesKeys = Object.keys(notes);
         const newTreeData = pathsToTree(notesKeys);
-        setTreeData(newTreeData);
+        try {
+            setTreeData(newTreeData[0].children[0].children[0].children);
+        } catch (error) {
+            console.log("NO NEW TREE DATA");
+        }
     }, [notes]);
 
     useEffect(() => {
@@ -63,7 +67,8 @@ function Home({
         document.getElementById('notesResult').innerHTML =
             `<ul>
       ${Object.keys(notes_result).map((key) => {
-                return `<nav><a id="${key}" href="#" onClick="window.location.hash = '/file/${encodeURIComponent(key)}'; return false;">${key}</a></nav>`
+                const displayKey = key.replace('command_center:appattacc.os/files/', '');
+                return `<nav><a id="${key}" href="#" onClick="window.location.hash = '/file/${encodeURIComponent(key)}'; return false;">${displayKey}</a></nav>`
             }).join('')}
           </ul>`
     }

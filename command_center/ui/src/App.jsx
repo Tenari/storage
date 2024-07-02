@@ -118,7 +118,7 @@ function App() {
         }
       });
       const fetchedNotes = await response.json();
-      console.log(fetchedNotes);
+      console.log("FETCHED NOTES", fetchedNotes);
       setNotes(fetchedNotes);
 
       const newIndex = new FlexSearch.Index(options);

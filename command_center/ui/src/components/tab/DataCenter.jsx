@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-function DataCenter({messages}) {
+function DataCenter({ messages }) {
     return (
         <div id="Data Center" className="tabcontent">
             <h1 className="mb-2 flex-col-center">Latest Chat Updates</h1>
