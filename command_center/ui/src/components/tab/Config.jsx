@@ -125,7 +125,6 @@ function Config({ fetchStatus }) {
                 </div>
             </div>
         </div>
-
     );
 }
 

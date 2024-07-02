@@ -14,6 +14,7 @@ function FileViewWrapper({ notes }) {
 }
 
 function App() {
+  const [notes, setNotes] = useState({});
   const [notesResult, setNotesResult] = useState('');
   const [notesIndex, setNotesIndex] = useState(null); // Add this line
   const [messages, setMessages] = useState([]);
@@ -39,8 +40,6 @@ function App() {
     preset: 'match',
     tokenize: 'strict',
   }
-
-
 
   const importNotes = async () => {
     document.getElementById('importNotesResult').textContent = 'Importing notes...';
@@ -92,7 +91,6 @@ function App() {
 
 
   }
-
 
   const webSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -187,10 +185,6 @@ function App() {
     }
   }
 
-
-
-  const [notes, setNotes] = useState({});
-  console.log("NOTES IN APP", notes);
   return (
     <HashRouter>
       <Routes>
@@ -216,5 +210,6 @@ function App() {
     </HashRouter>
   );
 }
+
 export default App
 

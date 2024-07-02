@@ -6,7 +6,6 @@ import ImportNotes from './tab/ImportNotes';
 import Notes from './tab/Notes';
 import ProvidedBackups from './tab/ProvidedBackups';
 
-
 function Home({
     fetchStatus,
     importNotes,
@@ -20,9 +19,6 @@ function Home({
     const [treeData, setTreeData] = useState([]);
 
     useEffect(() => {
-        console.log("init");
-        console.log("Notes updated in App:", notes);
-
         const notesKeys = Object.keys(notes);
         const newTreeData = pathsToTree(notesKeys);
         setTreeData(newTreeData);
@@ -30,7 +26,6 @@ function Home({
 
     useEffect(() => {
         fetchStatus();
-
     }, []);
 
     useEffect(() => {
@@ -58,11 +53,8 @@ function Home({
     }, []);
 
     const searchNotes = () => {
-        console.log(notesIndex);
         const searchQuery = document.getElementById('notesSearch').value || null;
-        console.log(searchQuery);
         const ids = notesIndex.search(searchQuery, 15);
-        console.log(ids);
         const notes_result = Object.fromEntries(
             Object.entries(notes).filter(([key, value]) => ids.includes(key))
         );
@@ -75,7 +67,6 @@ function Home({
             }).join('')}
           </ul>`
     }
-
 
     useEffect(() => {
         const tabContents = document.getElementsByClassName("tabcontent");

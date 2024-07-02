@@ -1,4 +1,4 @@
-function ImportNotes({importNotes}) {
+function ImportNotes({ importNotes }) {
     return (
         <div id="Import Notes" className="tabcontent">
             <h1 className="mb-2 flex-col-center">Import Notes</h1>
