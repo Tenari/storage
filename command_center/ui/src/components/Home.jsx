@@ -94,12 +94,6 @@ function Home({
         });
     }, [activeTab]);
 
-
-
-
-
-
-
     return (
         <div>
             <div className="tab">
@@ -113,7 +107,13 @@ function Home({
             <Config fetchStatus={fetchStatus}></Config>
             <DataCenter messages={messages}></DataCenter>
             <ImportNotes importNotes={importNotes}></ImportNotes>
-            <Notes searchNotes={searchNotes} notesBackupProvider={notesBackupProvider} notesBackedUpAt={notesBackedUpAt} lastBackupSize={lastBackupSize} treeData={treeData}></Notes>
+            <Notes 
+                searchNotes={searchNotes}
+                notesBackupProvider={notesBackupProvider} 
+                notesBackedUpAt={notesBackedUpAt} 
+                lastBackupSize={lastBackupSize} 
+                treeData={treeData}
+            ></Notes>
             <ProvidedBackups backupsTimeMap={backupsTimeMap}></ProvidedBackups>
             </div>
         </div>
@@ -121,28 +121,6 @@ function Home({
 }
 
 export default Home;
-
-
-
-
-function formatDate(timestamp) {
-    const date = new Date(timestamp * 1000);
-    const dateString = date.toLocaleDateString("en-US");
-    const timeString = date.toLocaleTimeString("en-US");
-    return `${dateString} ${timeString}`;
-}
-
-export function toggleTooltipVisibility() {
-    document.addEventListener('DOMContentLoaded', () => {
-        const tooltips = document.querySelectorAll('.tooltip');
-        tooltips.forEach(tooltip => {
-            tooltip.addEventListener('click', () => {
-                const tooltipText = tooltip.querySelector('.tooltiptext');
-                tooltipText.classList.toggle('visible');
-            });
-        });
-    });
-}
 
 function pathsToTree(paths) {
     const root = { name: 'root', children: {} };
@@ -180,5 +158,3 @@ function pathsToTree(paths) {
 
     return [convertToArboristFormat(root)];
 }
-
-// Example usage:
