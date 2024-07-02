@@ -10,7 +10,7 @@ function FileViewWrapper({ notes }) {
   const filePath = rawFilePath.startsWith('root/') ? rawFilePath.slice(5) : rawFilePath;
   const note = notes[filePath];
   console.log("NOTE IN WRAPPER", note);
-  return <FileView note={note} />;
+  return <FileView filePath={filePath} note={note} />;
 }
 
 function App() {
