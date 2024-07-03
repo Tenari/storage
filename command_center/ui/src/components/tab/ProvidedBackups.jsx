@@ -6,17 +6,23 @@ function ProvidedBackups({ backupsTimeMap }) {
                 <table className="backup-table">
                     <thead>
                         <tr>
-                            <th>Provider</th>
+                            <th>Node</th>
                             <th>Last Backup Time</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {Array.from(backupsTimeMap).map(([provider, time]) => (
-                            <tr key={provider}>
-                                <td>{provider}</td>
-                                <td>{time.toLocaleString()}</td>
+                        {Object.entries(backupsTimeMap).length > 0 ? (
+                            Object.entries(backupsTimeMap).map(([node, time]) => (
+                                <tr key={node}>
+                                    <td>{node}</td>
+                                    <td>{new Date(time).toLocaleString()}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="2">Currently not providing backups for anyone.</td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>

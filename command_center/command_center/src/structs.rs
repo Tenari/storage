@@ -1,5 +1,8 @@
+use chrono::{DateTime, Utc};
+use kinode_process_lib::NodeId;
 use kinode_process_lib::{get_state, set_state, Address};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Serialize, Deserialize)]
 pub enum Pkg {
@@ -11,14 +14,16 @@ pub enum Pkg {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
     pub our: Address,
-    pub config: InitialConfig,
+    pub api_keys: ApiKeys,
+    pub backup_info: BackupInfo,
 }
 
 impl State {
-    pub fn new(our: &Address, config: InitialConfig) -> Self {
+    pub fn new(our: &Address, api_keys: ApiKeys, backup_info: BackupInfo) -> Self {
         State {
             our: our.clone(),
-            config,
+            api_keys,
+            backup_info
         }
     }
 
@@ -37,8 +42,16 @@ impl State {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct InitialConfig {
+pub struct ApiKeys {
     pub telegram_key: Option<String>,
     pub openai_key: Option<String>,
     pub groq_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct BackupInfo {
+    pub data_password_hash: Option<String>,
+    pub backups_time_map: HashMap<NodeId, DateTime<Utc>>,
+    pub notes_last_backed_up_at: Option<DateTime<Utc>>,
+    pub notes_backup_provider: Option<NodeId>,
 }

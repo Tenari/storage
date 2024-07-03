@@ -19,7 +19,7 @@ function Config({ fetchStatus }) {
             openai_key: openaiKey,
             groq_key: groqKey
         };
-        const response = await fetch('/main:command_center:appattacc.os/submit_config', {
+        const response = await fetch('/main:command_center:appattacc.os/submit_api_keys', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

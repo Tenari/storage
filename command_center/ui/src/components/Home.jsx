@@ -30,6 +30,8 @@ function Home({
 
     useEffect(() => {
         fetchStatus();
+        console.log("NTOES BACKED UP AT", notesBackedUpAt);
+        console.log("NTOES RPOVIDER", notesBackupProvider);
     }, []);
 
     useEffect(() => {

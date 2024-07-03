@@ -2,16 +2,13 @@ use base64::{engine::general_purpose, Engine as _};
 use std::collections::HashMap;
 use std::path::Path;
 
-use chrono::DateTime;
-use chrono::Utc;
-
 use kinode_process_lib::vfs::{
     create_drive, create_file, open_dir, open_file, DirEntry, FileType, SeekFrom, VfsAction,
     VfsRequest,
 };
 use kinode_process_lib::{
     await_message, call_init, get_blob, http, our_capabilities, println, spawn, Address, Message,
-    NodeId, OnExit, Request, Response,
+    OnExit, Request, Response,
 };
 
 use llm_interface::openai::*;
@@ -35,10 +32,28 @@ wit_bindgen::generate!({
     world: "process-v0",
 });
 
-fn fetch_status() -> anyhow::Result<()> {
-    let state = State::fetch()
-        .ok_or_else(|| anyhow::anyhow!("State being fetched for the first time (or failed)"))?;
-    let config = &state.config;
+/////////////////////////////////////////////////
+// functions that fulfill HTTP requests from UI
+
+fn fetch_backup_data(state: &mut State) -> anyhow::Result<()> {
+    let backup_data = serde_json::to_vec(&serde_json::json!({
+        "backups_time_map": state.backup_info.backups_time_map,
+        "notes_last_backed_up_at": state.backup_info.notes_last_backed_up_at,
+        "notes_backup_provider": state.backup_info.notes_backup_provider,
+    }))?;
+    http::send_response(
+        http::StatusCode::OK,
+        Some(HashMap::from([(
+            "Content-Type".to_string(),
+            "application/json".to_string(),
+        )])),
+        backup_data,
+    );
+    Ok(())
+}
+
+fn fetch_status(state: &mut State) -> anyhow::Result<()> {
+    let config = &state.api_keys;
     let response_body = serde_json::to_string(&config)?;
     http::send_response(
         http::StatusCode::OK,
@@ -51,9 +66,9 @@ fn fetch_status() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn fetch_notes() -> anyhow::Result<()> {
+fn fetch_notes(our_files_path: &String) -> anyhow::Result<()> {
     let dir_entry: DirEntry = DirEntry {
-        path: NOTES_PATH.to_string(),
+        path: our_files_path.to_string(),
         file_type: FileType::Directory,
     };
 
@@ -71,82 +86,83 @@ fn fetch_notes() -> anyhow::Result<()> {
     Ok(())
 }
 
-// also creates state if doesn't exist
-fn submit_config(
-    our: &Address,
-    body_bytes: &[u8],
-    state: &mut Option<State>,
+fn submit_api_keys(
+    state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
+    body_bytes: &[u8],
 ) -> anyhow::Result<()> {
-    let initial_config = serde_json::from_slice::<InitialConfig>(body_bytes)?;
-    match state {
-        Some(state_) => {
-            println!("Modifying state to {:?}", initial_config);
-            state_.config = initial_config;
-        }
-        None => {
-            println!("Creating state {:?}", initial_config);
-            *state = Some(State::new(our, initial_config));
-        }
-    }
+    let api_keys = serde_json::from_slice::<ApiKeys>(body_bytes)?;
+    println!("Modifying api_keys to {:?}", api_keys);
+    state.api_keys = api_keys;
 
-    if let Some(ref mut state) = state {
-        for (pkg, addr) in pkgs.iter() {
-            println!("submit_config: matching pkg: {:?}", pkg);
-            match pkg {
-                Pkg::LLM => {
-                    if let Some(openai_key) = &state.config.openai_key {
-                        let req = serde_json::to_vec(&LLMRequest::RegisterOpenaiApiKey(
+    for (pkg, addr) in pkgs.iter() {
+        println!("submit_api_keys: matching pkg: {:?}", pkg);
+        match pkg {
+            Pkg::LLM => {
+                if let Some(openai_key) = &state.api_keys.openai_key {
+                    let req = serde_json::to_vec(&LLMRequest::RegisterOpenaiApiKey(
+                        RegisterApiKeyRequest {
+                            api_key: openai_key.clone(),
+                        },
+                    ))?;
+                    let _ = Request::new()
+                        .target(addr.clone())
+                        .body(req)
+                        .send_and_await_response(5)??;
+                }
+                if let Some(groq_key) = &state.api_keys.groq_key {
+                    let req = serde_json::to_vec(
+                        &llm_interface::openai::LLMRequest::RegisterGroqApiKey(
                             RegisterApiKeyRequest {
-                                api_key: openai_key.clone(),
+                                api_key: groq_key.clone(),
                             },
-                        ))?;
-                        let _ = Request::new()
-                            .target(addr.clone())
-                            .body(req)
-                            .send_and_await_response(5)??;
-                    }
-                    if let Some(groq_key) = &state.config.groq_key {
-                        let req = serde_json::to_vec(
-                            &llm_interface::openai::LLMRequest::RegisterGroqApiKey(
-                                RegisterApiKeyRequest {
-                                    api_key: groq_key.clone(),
-                                },
-                            ),
-                        )?;
-                        let _ = Request::new()
-                            .target(addr.clone())
-                            .body(req)
-                            .send_and_await_response(5)??;
-                    }
+                        ),
+                    )?;
+                    let _ = Request::new()
+                        .target(addr.clone())
+                        .body(req)
+                        .send_and_await_response(5)??;
                 }
-                Pkg::STT => {
-                    if let Some(openai_key) = &state.config.openai_key {
-                        let req =
-                            serde_json::to_vec(&STTRequest::RegisterApiKey(openai_key.clone()))?;
-                        let _ = Request::new()
-                            .target(addr.clone())
-                            .body(req)
-                            .send_and_await_response(5)??;
-                    }
+            }
+            Pkg::STT => {
+                if let Some(openai_key) = &state.api_keys.openai_key {
+                    let req = serde_json::to_vec(&STTRequest::RegisterApiKey(openai_key.clone()))?;
+                    let _ = Request::new()
+                        .target(addr.clone())
+                        .body(req)
+                        .send_and_await_response(5)??;
                 }
-                Pkg::Telegram => {
-                    if let Some(telegram_key) = &state.config.telegram_key {
-                        let init = TgInitialize {
-                            token: telegram_key.clone(),
-                            params: None,
-                        };
-                        let req = serde_json::to_vec(&TgRequest::RegisterApiKey(init))?;
-                        let _ = Request::new()
-                            .target(addr.clone())
-                            .body(req)
-                            .send_and_await_response(5)??;
-                    }
+            }
+            Pkg::Telegram => {
+                if let Some(telegram_key) = &state.api_keys.telegram_key {
+                    let init = TgInitialize {
+                        token: telegram_key.clone(),
+                        params: None,
+                    };
+                    let req = serde_json::to_vec(&TgRequest::RegisterApiKey(init))?;
+                    let _ = Request::new()
+                        .target(addr.clone())
+                        .body(req)
+                        .send_and_await_response(5)??;
                 }
             }
         }
-        state.save();
+    }
+    state.save();
 
+    http::send_response(
+        http::StatusCode::OK,
+        Some(HashMap::from([(
+            "Content-Type".to_string(),
+            "application/json".to_string(),
+        )])),
+        b"{\"message\": \"success\"}".to_vec(),
+    );
+    Ok(())
+}
+
+fn import_notes_and_respond(body_bytes: &[u8]) -> anyhow::Result<()> {
+    if import_notes(&body_bytes).is_ok() {
         http::send_response(
             http::StatusCode::OK,
             Some(HashMap::from([(
@@ -155,9 +171,13 @@ fn submit_config(
             )])),
             b"{\"message\": \"success\"}".to_vec(),
         );
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Failed to import notes"))
     }
-    Ok(())
 }
+
+/////////////////////////////////////////////////
 
 fn initialize_worker(our: Address) -> anyhow::Result<Address> {
     let our_worker = spawn(
@@ -168,247 +188,17 @@ fn initialize_worker(our: Address) -> anyhow::Result<Address> {
         vec![],
         false,
     )?;
-
     Ok(Address {
         node: our.node.clone(),
         process: our_worker,
     })
 }
 
-fn handle_backup_message(
-    our: &Address,
-    message: &Message,
-    data_password_hash: &mut String,
-    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
-    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
-    notes_backup_provider: &mut Option<NodeId>
-) -> anyhow::Result<()> {
-    match &message {
-        Message::Request { body, .. } => {
-            let deserialized: ClientRequest = serde_json::from_slice::<ClientRequest>(body)?;
-            match deserialized {
-                // receiving backup retrieval request from client
-                ClientRequest::BackupRetrieve { worker_address } => {
-                    println!(
-                        "got backup retrieval request from client: {:?}",
-                        message.source().node,
-                    );
-                    let our_worker_address = initialize_worker(our.clone())?;
-
-                    let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                            request_type: WorkerRequestType::RetrievingBackup,
-                            uploader_node: None,
-                            target_worker: Some(worker_address),
-                            password_hash: None,
-                        })?)
-                        .target(&our_worker_address)
-                        .send()?;
-
-                    println!("backups_time_map: {:#?}", backups_time_map);
-                    println!(
-                        "datetime {}",
-                        backups_time_map
-                            .get(&message.source().node)
-                            .unwrap_or(&chrono::Utc::now())
-                            .clone(),
-                    );
-                    let backup_response: Vec<u8> =
-                        serde_json::to_vec(&ServerResponse::BackupRetrieveResponse(
-                            backups_time_map
-                                .get(&message.source().node)
-                                .unwrap_or(&chrono::Utc::now())
-                                .clone(),
-                        ))?;
-                    let _resp: Result<(), anyhow::Error> =
-                        Response::new().body(backup_response).send();
-                }
-                // receiving backup request from client
-                ClientRequest::BackupRequest { .. } => {
-                    println!(
-                        "got backup request from client: {:?}",
-                        message.source().node,
-                    );
-
-                    backups_time_map.insert(message.source().node.to_string(), chrono::Utc::now());
-                    println!("backups_time_map: {:#?}", backups_time_map);
-
-                    // TODO: add criterion here
-                    // whether we want to back up or not
-                    let our_worker_address = initialize_worker(our.clone())?;
-
-                    let backup_response: Vec<u8> = serde_json::to_vec(
-                        &ServerResponse::BackupRequestResponse(BackupRequestResponse::Confirm {
-                            worker_address: our_worker_address.clone(),
-                        }),
-                    )?;
-                    let _resp: Result<(), anyhow::Error> =
-                        Response::new().body(backup_response).send();
-
-                    let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                            request_type: WorkerRequestType::BackingUp,
-                            uploader_node: Some(message.source().node.clone()),
-                            target_worker: None,
-                            password_hash: None,
-                        })?)
-                        .target(&our_worker_address)
-                        .send_and_await_response(5)??;
-                }
-            }
-        }
-        // receiving backup response from server
-        Message::Response { body, .. } => {
-            let deserialized: ServerResponse = serde_json::from_slice::<ServerResponse>(body)?;
-            match deserialized {
-                ServerResponse::BackupRetrieveResponse(datetime) => {
-                    println!(
-                        "received BackupRetrieveResponse from {:?}",
-                        message.source().node
-                    );
-                    println!("last backup was made at: {:?}.", datetime);
-                }
-                ServerResponse::BackupRequestResponse(backup_response) => match backup_response {
-                    BackupRequestResponse::Confirm { worker_address } => {
-                        println!(
-                            "received Confirm backup_response from {:?}",
-                            message.source().node,
-                        );
-
-                        let our_worker_address = initialize_worker(our.clone())?;
-
-                        let _worker_request = Request::new()
-                            .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                                request_type: WorkerRequestType::BackingUp,
-                                uploader_node: None,
-                                target_worker: Some(worker_address),
-                                password_hash: Some(data_password_hash.clone()),
-                            })?)
-                            .target(&our_worker_address)
-                            .send()?;
-
-                        *notes_last_backed_up_at = Some(chrono::Utc::now());
-                        *notes_backup_provider = Some(message.source().node.clone());
-
-                        println!("data_password_hash before: {}", data_password_hash);
-                        *data_password_hash = String::new();
-                        println!("data_password_hash after: {}", data_password_hash);
-                    }
-                    BackupRequestResponse::Decline { .. } => {
-                        println!(
-                            "received Decline backup_response from {:?}",
-                            message.source().node,
-                        );
-                    }
-                },
-            }
-        }
-    }
-    return Ok(());
-}
-
-fn handle_http_request(
-    our: &Address,
-    state: &mut Option<State>,
-    body: &[u8],
-    pkgs: &HashMap<Pkg, Address>,
-    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
-    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
-    notes_backup_provider: &mut Option<NodeId>
-) -> anyhow::Result<()> {
-    let http_request = http::HttpServerRequest::from_bytes(body)?
-        .request()
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse http request"))?;
-    let path = http_request.path()?;
-    let bytes = get_blob()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get blob"))?
-        .bytes;
-    match path.as_str() {
-        "/status" => {
-            println!("fetching status");
-            fetch_status()
-        }
-        "/submit_config" => submit_config(our, &bytes, state, pkgs),
-        "/notes" => {
-            println!("fetching notes");
-            fetch_notes()
-        }
-        "/import_notes" => match import_notes(&bytes) {
-            Ok(_) => {
-                http::send_response(
-                    http::StatusCode::OK,
-                    Some(HashMap::from([(
-                        "Content-Type".to_string(),
-                        "application/json".to_string(),
-                    )])),
-                    b"{\"message\": \"success\"}".to_vec(),
-                );
-                Ok(())
-            }
-            Err(e) => Err(e),
-        },
-        "/fetch_backup_data" => {
-            println!("got /fetch_backup_data");
-            let backup_data = serde_json::to_vec(&serde_json::json!({
-                "backups_time_map": backups_time_map,
-                "notes_last_backed_up_at": notes_last_backed_up_at,
-                "notes_backup_provider": notes_backup_provider,
-            }))?;
-            http::send_response(
-                http::StatusCode::OK,
-                Some(HashMap::from([(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )])),
-                backup_data,
-            );
-            Ok(())
-        }
-        "/backup_request" => {
-            println!("got /backup_request");
-            println!("http request: {:#?}", http_request);
-            let deserialized: Result<serde_json::Value, _> = serde_json::from_slice(&bytes);
-            match deserialized {
-                Ok(value) => {
-                    println!("Deserialized backup request: {:?}", value);
-                    Ok(())
-                }
-                Err(e) => {
-                    println!("Error deserializing backup request: {:?}", e);
-                    println!("Received bytes: {:?}", String::from_utf8_lossy(&bytes));
-                    Err(anyhow::anyhow!(
-                        "Failed to deserialize backup request: {}",
-                        e
-                    ))
-                }
-            }
-        }
-        _ => Ok(()),
-    }
-}
-
-fn handle_http_message(
-    our: &Address,
-    message: &Message,
-    state: &mut Option<State>,
-    pkgs: &HashMap<Pkg, Address>,
-    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
-    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
-    notes_backup_provider: &mut Option<NodeId>
-) -> anyhow::Result<()> {
-    match message {
-        Message::Request { ref body, .. } => handle_http_request(our, state, body, pkgs, backups_time_map, notes_last_backed_up_at, notes_backup_provider),
-        Message::Response { .. } => Ok(()),
-    }
-}
-
 fn handle_ui_backup_request(
     our: &Address,
+    state: &mut State,
+    paths: &HashMap<&str, String>,
     message: &Message,
-    data_password_hash: &mut String,
-    our_files_path: &String,
-    temp_files_path: &String,
-    retrieved_encrypted_backup_path: &String,
 ) -> anyhow::Result<()> {
     match &message {
         Message::Request { body, .. } => {
@@ -418,28 +208,25 @@ fn handle_ui_backup_request(
             match deserialized {
                 // making backup retrieval request to server
                 UiRequest::BackupRetrieve { node_id } => {
-                    println!("sending backup retrieve request to server: {:?}", node_id);
-
                     let our_worker_address = initialize_worker(our.clone())?;
 
                     let backup_retrieve = serde_json::to_vec(&ClientRequest::BackupRetrieve {
                         worker_address: our_worker_address.clone(),
                     })?;
-                    let _ = Request::to(Address::new(
+                    let _retrieve_backup = Request::to(Address::new(
                         node_id.clone(),
                         ("main", "command_center", "appattacc.os"),
                     ))
                     .expects_response(5)
                     .body(backup_retrieve)
                     .send();
-                    println!("sent retrieve request to {}", node_id);
 
                     let _worker_request: Message = Request::new()
                         .body(serde_json::to_vec(&WorkerRequest::Initialize {
                             request_type: WorkerRequestType::RetrievingBackup,
                             uploader_node: Some(our.node.clone()),
                             target_worker: None,
-                            password_hash: Some(data_password_hash.clone()),
+                            password_hash: state.backup_info.data_password_hash.clone(),
                         })?)
                         .target(&our_worker_address)
                         .send_and_await_response(5)??;
@@ -450,10 +237,8 @@ fn handle_ui_backup_request(
                     password_hash,
                     ..
                 } => {
-                    *data_password_hash = password_hash.clone();
-                    println!("data_password_hash: {}", data_password_hash);
-
-                    println!("sending backup request to server: {:?}", node_id);
+                    state.backup_info.data_password_hash = Some(password_hash.clone());
+                    state.save();
 
                     let backup_request =
                         serde_json::to_vec(&ClientRequest::BackupRequest { size: 0 })?;
@@ -467,15 +252,14 @@ fn handle_ui_backup_request(
                 }
                 // decrypt retrieved backup
                 UiRequest::Decrypt { password_hash, .. } => {
-                    let dir_entry: DirEntry =
-                                            // /command_center:appattacc.os/retrieved_encrypted_backup
-                                            DirEntry {
-                                                path: retrieved_encrypted_backup_path.clone(),
-                                                file_type: FileType::Directory,
-                                            };
+                    // /command_center:appattacc.os/retrieved_encrypted_backup
+                    let dir_entry: DirEntry = DirEntry {
+                        path: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
+                        file_type: FileType::Directory,
+                    };
 
                     let request: VfsRequest = VfsRequest {
-                        path: temp_files_path.clone(),
+                        path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::RemoveDirAll,
                     };
                     let _message = Request::new()
@@ -484,7 +268,7 @@ fn handle_ui_backup_request(
                         .send_and_await_response(5)?;
 
                     let request: VfsRequest = VfsRequest {
-                        path: temp_files_path.clone(),
+                        path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::CreateDirAll,
                     };
                     let _message = Request::new()
@@ -528,7 +312,11 @@ fn handle_ui_backup_request(
                         let decrypted_path = String::from_utf8(decrypted_vec).map_err(|e| {
                             anyhow::anyhow!("Failed to convert bytes to string: {}", e)
                         })?;
-                        let file_path = format!("{}/{}", temp_files_path, decrypted_path);
+                        let file_path = format!(
+                            "{}/{}",
+                            paths.get("temp_files_path").unwrap().clone(),
+                            decrypted_path
+                        );
                         println!("file_path: {}", file_path);
                         let parent_path = Path::new(&file_path)
                             .parent()
@@ -598,7 +386,7 @@ fn handle_ui_backup_request(
                     // remove after all decryption is successful,
                     // remove files folder and rename files_temp to files
                     let request: VfsRequest = VfsRequest {
-                        path: our_files_path.clone(),
+                        path: paths.get("our_files_path").unwrap().clone(),
                         action: VfsAction::RemoveDirAll,
                     };
                     let _message = Request::new()
@@ -607,9 +395,9 @@ fn handle_ui_backup_request(
                         .send_and_await_response(5)?;
 
                     let request: VfsRequest = VfsRequest {
-                        path: temp_files_path.clone(),
+                        path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::Rename {
-                            new_path: our_files_path.to_string(),
+                            new_path: paths.get("our_files_path").unwrap().clone().to_string(),
                         },
                     };
                     let _message = Request::new()
@@ -626,43 +414,194 @@ fn handle_ui_backup_request(
     }
 }
 
+fn handle_backup_message(
+    our: &Address,
+    state: &mut State,
+    message: &Message,
+) -> anyhow::Result<()> {
+    match &message {
+        Message::Request { body, .. } => {
+            let deserialized: ClientRequest = serde_json::from_slice::<ClientRequest>(body)?;
+            match deserialized {
+                // receiving backup retrieval request from client
+                ClientRequest::BackupRetrieve { worker_address } => {
+                    let our_worker_address = initialize_worker(our.clone())?;
+                    let _worker_request = Request::new()
+                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                            request_type: WorkerRequestType::RetrievingBackup,
+                            uploader_node: None,
+                            target_worker: Some(worker_address),
+                            password_hash: None,
+                        })?)
+                        .target(&our_worker_address)
+                        .send()?;
+
+                    let backup_response: Vec<u8> =
+                        serde_json::to_vec(&ServerResponse::BackupRetrieveResponse(
+                            state
+                                .backup_info
+                                .backups_time_map
+                                .get(&message.source().node)
+                                .copied(),
+                        ))?;
+                    let _resp: Result<(), anyhow::Error> =
+                        Response::new().body(backup_response).send();
+                }
+                // receiving backup request from client
+                ClientRequest::BackupRequest { .. } => {
+                    // TODO: add criterion here
+                    // whether we want to provide backup or not
+
+                    state
+                        .backup_info
+                        .backups_time_map
+                        .insert(message.source().node.to_string(), chrono::Utc::now());
+                    state.save();
+
+                    let our_worker_address = initialize_worker(our.clone())?;
+
+                    let backup_response: Vec<u8> = serde_json::to_vec(
+                        &ServerResponse::BackupRequestResponse(BackupRequestResponse::Confirm {
+                            worker_address: our_worker_address.clone(),
+                        }),
+                    )?;
+                    let _resp: Result<(), anyhow::Error> =
+                        Response::new().body(backup_response).send();
+
+                    let _worker_request = Request::new()
+                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                            request_type: WorkerRequestType::BackingUp,
+                            uploader_node: Some(message.source().node.clone()),
+                            target_worker: None,
+                            password_hash: None,
+                        })?)
+                        .target(&our_worker_address)
+                        .send_and_await_response(5)??;
+                }
+            }
+        }
+        // receiving backup response from server
+        Message::Response { body, .. } => {
+            let deserialized: ServerResponse = serde_json::from_slice::<ServerResponse>(body)?;
+            match deserialized {
+                ServerResponse::BackupRetrieveResponse(datetime) => {
+                    state.backup_info.notes_last_backed_up_at = datetime;
+                    state.save()
+                }
+                ServerResponse::BackupRequestResponse(backup_response) => match backup_response {
+                    BackupRequestResponse::Confirm { worker_address } => {
+                        println!(
+                            "received Confirm backup_response from {:?}",
+                            message.source().node,
+                        );
+
+                        let our_worker_address = initialize_worker(our.clone())?;
+                        let _worker_request = Request::new()
+                            .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                                request_type: WorkerRequestType::BackingUp,
+                                uploader_node: None,
+                                target_worker: Some(worker_address),
+                                password_hash: state.backup_info.data_password_hash.clone(),
+                            })?)
+                            .target(&our_worker_address)
+                            .send()?;
+
+                        state.backup_info.notes_last_backed_up_at = Some(chrono::Utc::now());
+                        state.backup_info.notes_backup_provider =
+                            Some(message.source().node.clone());
+                        state.backup_info.data_password_hash = None;
+                        state.save();
+                    }
+                    BackupRequestResponse::Decline { .. } => {
+                        println!(
+                            "received Decline backup_response from {:?}",
+                            message.source().node,
+                        );
+                    }
+                },
+            }
+        }
+    }
+    return Ok(());
+}
+
+fn handle_http_request(
+    state: &mut State,
+    pkgs: &HashMap<Pkg, Address>,
+    paths: &HashMap<&str, String>,
+    body: &[u8],
+) -> anyhow::Result<()> {
+    let http_request = http::HttpServerRequest::from_bytes(body)?
+        .request()
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse http request"))?;
+    let path = http_request.path()?;
+    let bytes = get_blob()
+        .ok_or_else(|| anyhow::anyhow!("Failed to get blob"))?
+        .bytes;
+    match path.as_str() {
+        "/status" => fetch_status(state),
+        "/fetch_backup_data" => fetch_backup_data(state),
+        "/submit_api_keys" => submit_api_keys(state, pkgs, &bytes),
+        "/notes" => fetch_notes(paths.get("our_files_path").unwrap()),
+        "/import_notes" => import_notes_and_respond(&bytes),
+        "/backup_request" => {
+            // WIP
+            println!("got /backup_request");
+            let deserialized: Result<serde_json::Value, _> = serde_json::from_slice(&bytes);
+            match deserialized {
+                Ok(value) => {
+                    println!("Deserialized backup request: {:?}", value);
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("Error deserializing backup request: {:?}", e);
+                    println!("Received bytes: {:?}", String::from_utf8_lossy(&bytes));
+                    Err(anyhow::anyhow!(
+                        "Failed to deserialize backup request: {}",
+                        e
+                    ))
+                }
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+fn handle_http_message(
+    state: &mut State,
+    pkgs: &HashMap<Pkg, Address>,
+    paths: &HashMap<&str, String>,
+    message: &Message,
+) -> anyhow::Result<()> {
+    match message {
+        Message::Request { ref body, .. } => handle_http_request(state, pkgs, paths, body),
+        Message::Response { .. } => Ok(()),
+    }
+}
+
 fn handle_message(
     our: &Address,
-    state: &mut Option<State>,
+    state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
-    data_password_hash: &mut String,
-    temp_files_path: &String,
-    our_files_path: &String,
-    retrieved_encrypted_backup_path: &String,
-    backups_time_map: &mut HashMap<String, DateTime<Utc>>,
-    notes_last_backed_up_at: &mut Option<DateTime<Utc>>,
-    notes_backup_provider: &mut Option<NodeId>,
+    paths: &HashMap<&str, String>,
 ) -> anyhow::Result<()> {
     let message = await_message()?;
 
     if message.source().node != our.node {
-        handle_backup_message(our, &message, data_password_hash, backups_time_map, notes_last_backed_up_at, notes_backup_provider)?;
+        handle_backup_message(our, state, &message)?;
     }
 
     match message.source().process.to_string().as_str() {
         "http_server:distro:sys" | "http_client:distro:sys" => {
-            handle_http_message(&our, &message, state, pkgs, backups_time_map, notes_last_backed_up_at, notes_backup_provider)
+            handle_http_message(state, pkgs, paths, &message)
         }
-        // TODO: add to handle_http_message later, when i implement the ui
-        // for now, it takes inputs from the teriminal
-        _ => handle_ui_backup_request(
-            our,
-            &message,
-            data_password_hash,
-            our_files_path,
-            temp_files_path,
-            retrieved_encrypted_backup_path,
-        ),
+        // helper for debugging. remove for prod.
+        // it takes inputs from the teriminal
+        _ => handle_ui_backup_request(our, state, paths, &message),
     }
 }
 
 const ICON: &str = include_str!("icon");
-const NOTES_PATH: &str = "/command_center:appattacc.os/files";
 call_init!(init);
 fn init(our: Address) {
     let _ = http::serve_ui(
@@ -672,16 +611,14 @@ fn init(our: Address) {
         false,
         vec![
             "/",
-            "/submit_config",
+            "/submit_api_keys",
             "/status",
             "/notes",
             "/import_notes",
             "/backup_request",
-            "/fetch_backup_data"
+            "/fetch_backup_data",
         ],
     );
-
-    let mut state = State::fetch();
 
     // add ourselves to the homepage
     Request::to(("our", "homepage", "homepage", "sys"))
@@ -700,7 +637,9 @@ fn init(our: Address) {
         .send()
         .unwrap();
 
-    // calling RegisterApiKey because it calls getUpdates (necessary every time a process is restarted)
+    let mut state = State::fetch()
+        .unwrap_or_else(|| State::new(&our, ApiKeys::default(), BackupInfo::default()));
+
     let mut pkgs = HashMap::new();
     pkgs.insert(
         Pkg::LLM,
@@ -718,48 +657,36 @@ fn init(our: Address) {
         Address::new(&our.node, ("tg", "command_center", "appattacc.os")),
     );
 
-    match &state.clone() {
-        Some(state) => {
-            if let Some(telegram_key) = &state.config.telegram_key {
-                let init = TgInitialize {
-                    token: telegram_key.clone(),
-                    params: None,
-                };
-                let req = serde_json::to_vec(&TgRequest::RegisterApiKey(init));
-                let _ = Request::new()
-                    .target(pkgs.get(&Pkg::Telegram).unwrap())
-                    .body(req.unwrap())
-                    .send_and_await_response(5);
-            }
-        }
-        None => {}
+    // calling RegisterApiKey because it calls getUpdates (necessary every time a process is restarted)
+    if let Some(telegram_key) = &state.api_keys.telegram_key {
+        let init = TgInitialize {
+            token: telegram_key.clone(),
+            params: None,
+        };
+        let req = serde_json::to_vec(&TgRequest::RegisterApiKey(init));
+        let _ = Request::new()
+            .target(pkgs.get(&Pkg::Telegram).unwrap())
+            .body(req.unwrap())
+            .send_and_await_response(5);
     }
 
     let temp_files_path = create_drive(our.package_id(), "files_temp", Some(5)).unwrap();
     let our_files_path = create_drive(our.package_id(), "files", Some(5)).unwrap();
-    let _encrypted_storage_path =
+    let encrypted_storage_path =
         create_drive(our.package_id(), "encrypted_storage", Some(5)).unwrap();
     let retrieved_encrypted_backup_path =
         create_drive(our.package_id(), "retrieved_encrypted_backup", Some(5)).unwrap();
-    let mut data_password_hash = "".to_string();
-
-    let mut backups_time_map: HashMap<NodeId, DateTime<Utc>> = HashMap::new();
-    let mut notes_last_backed_up_at: Option<DateTime<Utc>> = None;
-    let mut notes_backup_provider: Option<NodeId> = None;
+    let mut paths = HashMap::new();
+    paths.insert("our_files_path", our_files_path);
+    paths.insert("temp_files_path", temp_files_path);
+    paths.insert(
+        "retrieved_encrypted_backup_path",
+        retrieved_encrypted_backup_path,
+    );
+    paths.insert("encrypted_storage_path", encrypted_storage_path);
 
     loop {
-        match handle_message(
-            &our,
-            &mut state,
-            &pkgs,
-            &mut data_password_hash,
-            &temp_files_path,
-            &our_files_path,
-            &retrieved_encrypted_backup_path,
-            &mut backups_time_map,
-            &mut notes_last_backed_up_at,
-            &mut notes_backup_provider,
-        ) {
+        match handle_message(&our, &mut state, &pkgs, &paths) {
             Ok(_) => {}
             Err(e) => println!("Error: {:?}", e),
         }

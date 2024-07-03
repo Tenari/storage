@@ -22,7 +22,6 @@ function Notes({ searchNotes, notesBackupProvider, notesBackedUpAt, lastBackupSi
         }
     }
 
-
     return (
         <div id="Notes" className="tabcontent">
             <div className="notesBackupStatus">

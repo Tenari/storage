@@ -40,6 +40,7 @@ fn handle_message(
                     password_hash,
                     uploader_node,
                     target_worker,
+                    
                 } => {
                     println!("command_center worker: got initialize request");
 
@@ -68,7 +69,6 @@ fn handle_message(
                                     }
                                 }
                             };
-                            // println!("dir_entry: {:?}", dir_entry);
                             // outputs map path contents, a flattened version of the nested dir
                             let dir = read_nested_dir_light(dir_entry)?;
 
@@ -89,12 +89,10 @@ fn handle_message(
                                     // file_name in request:
                                     // GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A==
                                     BackingUp => {
-                                        // println!("encrypting file name");
                                         // encrypt file name
                                         let prefix = "command_center:appattacc.os/files/";
                                         if path.starts_with(prefix) {
                                             let rest_of_path = &path[prefix.len()..];
-                                            println!("rest of path: {}", rest_of_path.clone());
                                             let encrypted_vec = &encrypt_data(
                                                 rest_of_path.as_bytes(),
                                                 password_hash.as_str(),
@@ -102,7 +100,6 @@ fn handle_message(
                                             let rest_of_path =
                                                 general_purpose::URL_SAFE.encode(&encrypted_vec);
                                             file_name = rest_of_path;
-                                            println!("encrypted name: {}", file_name.clone());
                                         } else {
                                             return Err(anyhow::anyhow!(
                                                 "Path does not start with the expected prefix"
@@ -124,32 +121,21 @@ fn handle_message(
                                 };
 
                                 // chunking and sending
-
                                 let num_chunks = if size != 0 {
                                     (size as f64 / CHUNK_SIZE as f64).ceil() as u64
                                 } else {
                                     1
                                 };
 
-                                println!("num_chunks: {}", num_chunks);
                                 for i in 0..num_chunks {
-                                    if i == 0 || i == 1 {
-                                        println!("i: {}", i);
-                                    }
                                     let offset = i * CHUNK_SIZE;
                                     let length = CHUNK_SIZE.min(size - offset); // size=file size
                                     let mut buffer = vec![0; length as usize];
                                     let _pos = active_file.seek(SeekFrom::Current(0))?;
                                     active_file.read_at(&mut buffer)?;
 
-                                    if let Some(first_element) = buffer.first() {
-                                        println!("buffer first: {:?}", first_element);
-                                    }
                                     if let BackingUp = request_type {
                                         buffer = encrypt_data(&buffer, password_hash.as_str());
-                                    }
-                                    if let Some(first_element) = buffer.first() {
-                                        println!("encrypted buffer first: {:?}", first_element);
                                     }
 
                                     Request::new()
@@ -273,8 +259,6 @@ fn handle_message(
                                 .body(serde_json::to_vec(&request)?)
                                 .send_and_await_response(5)?;
 
-                            // println!("here1");
-
                             let _dir = open_dir(&path_to_dir, false, Some(5))?;
                         }
                     }
@@ -289,33 +273,21 @@ fn handle_message(
                     match request_type {
                         BackingUp => {
                             let mut file = open_file(&file_path, true, Some(5))?;
-                            // println!("file_path: {}", file.path);
-                            // println!(
-                            //     "first 2 bytes: {:?}, last 2 bytes: {:?}",
-                            //     bytes.get(0..2),
-                            //     bytes.get(bytes.len().saturating_sub(2)..)
-                            // );
                             file.append(&bytes)?;
                         }
                         RetrievingBackup => {
                             // manually creating file if doesnt exist, since open_file(create:true) has an issue
                             let dir = open_dir(&path_to_dir, false, None)?;
-                            // println!("here2.5");
 
                             let entries = dir.read()?;
-                            // println!("here2.6");
 
                             if entries.contains(&DirEntry {
                                 path: file_path[1..].to_string(),
                                 file_type: FileType::File,
                             }) {
                             } else {
-                                // println!("here2.7");
-
                                 let _file = create_file(&file_path, Some(5))?;
                             }
-
-                            // println!("here3");
 
                             let mut file = open_file(&file_path, false, Some(5))?;
                             file.append(&bytes)?;
@@ -345,7 +317,7 @@ fn init(our: Address) {
     let retrieved_encrypted_backup_dir =
         open_dir(&retrieved_encrypted_backup_path, false, Some(5)).unwrap();
 
-    // TODO size should be a hashmap of sizes for each file
+    // TODO size should be a hashmap of sizes for each file(?)
     let mut size: Option<u64> = None;
 
     loop {

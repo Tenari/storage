@@ -21,17 +21,10 @@ function App() {
   const [notesResult, setNotesResult] = useState('');
   const [notesIndex, setNotesIndex] = useState(null); // Add this line
   const [messages, setMessages] = useState([]);
-
-  // backups mock data
-  const backupsTimeMap = new Map();
-  backupsTimeMap.set('astronaut.os', new Date('2024-03-15T12:00:00Z'));
-  backupsTimeMap.set('sour-cabbage.os', new Date('2023-03-15T12:00:00Z'));
-  backupsTimeMap.set('undefineddd.os', new Date('2022-03-15T12:00:00Z'));
-  backupsTimeMap.set('redefineddd.os', new Date('2021-03-15T12:00:00Z'));
-  const ourNode = 'astronaut.os';
-  const notesBackedUpAt = new Date('2021-03-15T12:00:00Z');
-  const lastBackupSize = "1gb";
-  const notesBackupProvider = 'sour-cabbage.os';
+  const [backupsTimeMap, setBackupsTimeMap] = useState(new Map());
+  const [notesBackedUpAt, setNotesBackedUpAt] = useState(null);
+  const [notesBackupProvider, setNotesBackupProvider] = useState(null);
+  const [lastBackupSize, setLastBackupSize] = useState(null);
 
   useEffect(() => {
     webSocket();
@@ -199,6 +192,11 @@ function App() {
         });
         const resp = await response.json();
         console.log("response:", resp);
+        setBackupsTimeMap(resp.backups_time_map);
+        setNotesBackedUpAt(resp.notes_last_backed_up_at);
+        setNotesBackupProvider(resp.notes_backup_provider);
+        // mock:
+        setLastBackupSize("1gb");
     } catch (error) {
         console.error("error on backup:", error);
     }
@@ -220,8 +218,8 @@ function App() {
           setMessages={setMessages}
           notesBackedUpAt={notesBackedUpAt}
           notesBackupProvider={notesBackupProvider}
-          lastBackupSize={lastBackupSize}
           backupsTimeMap={backupsTimeMap}
+          lastBackupSize={lastBackupSize}
         />} />
         <Route path="/file/:filePath" element={<FileViewWrapper notes={notes} />} />
         <Route path="*" element={<div>Not Found</div>} />
