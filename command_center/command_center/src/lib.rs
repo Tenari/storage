@@ -22,9 +22,7 @@ mod tg_api;
 
 use files_lib::encryption::{decrypt_data, ENCRYPTED_CHUNK_SIZE};
 use files_lib::structs::{
-    BackupRequestResponse, ClientRequest, ServerResponse, UiRequest, WorkerRequest,
-    WorkerRequestType,
-};
+    BackupRequestResponse, ClientRequest, ServerResponse, UiRequest, WorkerRequest};
 use files_lib::{import_notes, read_nested_dir_light};
 
 wit_bindgen::generate!({
