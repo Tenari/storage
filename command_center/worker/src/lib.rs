@@ -1,10 +1,10 @@
 use base64::{engine::general_purpose, Engine as _};
-use std::path::{self, Path};
+use std::path::Path;
 
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{
-        create_file, open_dir, open_file, DirEntry, Directory, FileType, SeekFrom, VfsAction,
+        create_file, open_dir, open_file, DirEntry, FileType, SeekFrom, VfsAction,
         VfsRequest,
     },
     Address, Message, Request,
@@ -20,29 +20,21 @@ wit_bindgen::generate!({
 });
 
 fn handle_message(
-    _our: &Address,
     receive_chunks_to_dir: &mut String,
-    _size: &mut Option<u64>,
 ) -> anyhow::Result<bool> {
     let message = await_message()?;
 
-    match message {
-        Message::Request { ref body, .. } => {
-            let request = serde_json::from_slice::<WorkerRequest>(body)?;
-            match request {
-                WorkerRequest::InitializeSendWorker {
+    if let Message::Request { ref body, .. } = message {
+        let request = serde_json::from_slice::<WorkerRequest>(body)?;
+        match request {
+                WorkerRequest::InitializeSenderWorker {
                     target_worker,
                     password_hash,
                     sending_from_dir
                 } => {
                     println!("command_center worker: got initialize request");
-
-                    // initialize command from main process,
-                    // sets up worker, matches on if it's a sender or receiver.
-                    // if target_worker = None, we are receiver, else sender.
-                    // send data to target worker
-                    println!("password_hash: {:?}", password_hash);
-                    println!("sending_from_dir: {}", sending_from_dir);
+                    // initialized from main process,
+                    // sends data to target worker
                     let dir_entry = DirEntry {
                         path: sending_from_dir,
                         file_type: FileType::Directory
@@ -138,7 +130,7 @@ fn handle_message(
 
                     return Ok(true);
                 }
-                WorkerRequest::InitializeReceiveWorker {
+                WorkerRequest::InitializeReceiverWorker {
                     receive_to_dir
                 } => {
                     // start receiving data
@@ -207,36 +199,22 @@ fn handle_message(
                     file.append(&bytes)?;
                 }
             }
-        }
-        _ => {
-            println!("command_center worker: got something else than request...");
-        }
     }
     Ok(false)
 }
 
 call_init!(init);
-fn init(our: Address) {
+fn init(_our: Address) {
     println!("command_center worker: begin");
     let start = std::time::Instant::now();
 
     let mut receive_chunks_to_dir = String::new();
 
-    // TODO size should be a hashmap of sizes for each file(?)
-    let mut size: Option<u64> = None;
-
     loop {
-        match handle_message(
-            &our,
-            &mut receive_chunks_to_dir,
-            &mut size,
-        ) {
+        match handle_message(&mut receive_chunks_to_dir) {
             Ok(exit) => {
                 if exit {
-                    println!(
-                        "command_center worker: done: exiting, took {:?}",
-                        start.elapsed()
-                    );
+                    println!("command_center worker: done: exiting, took {:?}", start.elapsed());
                     break;
                 }
             }

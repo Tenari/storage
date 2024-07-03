@@ -223,7 +223,7 @@ fn handle_ui_backup_request(
 
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
-                            &WorkerRequest::InitializeReceiveWorker {
+                            &WorkerRequest::InitializeReceiverWorker {
                                 receive_to_dir: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
                             },
                         )?)
@@ -287,12 +287,11 @@ fn handle_ui_backup_request(
                         // chunk the data
                         let size = active_file.metadata()?.len;
 
-                        let mut file_name = String::new();
                         let _pos = active_file.seek(SeekFrom::Start(0))?;
 
                         // path: e.g. command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A
                         let path = Path::new(path);
-                        file_name = path
+                        let file_name = path
                             .file_name()
                             .unwrap_or_default()
                             .to_str()
@@ -336,8 +335,6 @@ fn handle_ui_backup_request(
                         // have to deal with encryption change the length of buffer
                         // hence offset needs to be accumulated and length of each chunk sent can change
                         let num_chunks = (size as f64 / ENCRYPTED_CHUNK_SIZE as f64).ceil() as u64;
-
-                        //     println!("here?3");
 
                         for i in 0..num_chunks {
                             let offset = i * ENCRYPTED_CHUNK_SIZE;
@@ -418,7 +415,7 @@ fn handle_backup_message(
                 ClientRequest::BackupRetrieve { worker_address } => {
                     let our_worker_address = initialize_worker(our.clone())?;
                     let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::InitializeSendWorker {
+                        .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
                             target_worker: worker_address.clone(),
                             password_hash: None,
                             sending_from_dir: format!(
@@ -464,7 +461,7 @@ fn handle_backup_message(
 
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
-                            &WorkerRequest::InitializeReceiveWorker {
+                            &WorkerRequest::InitializeReceiverWorker {
                                 receive_to_dir: format!(
                                     "{}/{}",
                                     paths.get("encrypted_storage_path").unwrap().clone(),
@@ -494,7 +491,7 @@ fn handle_backup_message(
 
                         let our_worker_address = initialize_worker(our.clone())?;
                         let _worker_request = Request::new()
-                            .body(serde_json::to_vec(&WorkerRequest::InitializeSendWorker {
+                            .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
                                 target_worker: worker_address,
                                 password_hash: state.backup_info.data_password_hash.clone(),
                                 sending_from_dir: paths.get("our_files_path").unwrap().clone(),
