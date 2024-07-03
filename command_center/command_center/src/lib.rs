@@ -221,15 +221,14 @@ fn handle_ui_backup_request(
                     .body(backup_retrieve)
                     .send();
 
-                    let _worker_request: Message = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                            request_type: WorkerRequestType::RetrievingBackup,
-                            uploader_node: Some(our.node.clone()),
-                            target_worker: None,
-                            password_hash: state.backup_info.data_password_hash.clone(),
-                        })?)
+                    let _worker_request = Request::new()
+                        .body(serde_json::to_vec(
+                            &WorkerRequest::InitializeReceiveWorker {
+                                receive_to_dir: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
+                            },
+                        )?)
                         .target(&our_worker_address)
-                        .send_and_await_response(5)??;
+                        .send()?;
                 }
                 // making backup request to server
                 UiRequest::BackupRequest {
@@ -254,7 +253,10 @@ fn handle_ui_backup_request(
                 UiRequest::Decrypt { password_hash, .. } => {
                     // /command_center:appattacc.os/retrieved_encrypted_backup
                     let dir_entry: DirEntry = DirEntry {
-                        path: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
+                        path: paths
+                            .get("retrieved_encrypted_backup_path")
+                            .unwrap()
+                            .clone(),
                         file_type: FileType::Directory,
                     };
 
@@ -289,7 +291,6 @@ fn handle_ui_backup_request(
                         let _pos = active_file.seek(SeekFrom::Start(0))?;
 
                         // path: e.g. command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A
-                        println!("path: {}", path);
                         let path = Path::new(path);
                         file_name = path
                             .file_name()
@@ -298,7 +299,6 @@ fn handle_ui_backup_request(
                             .unwrap_or_default()
                             .to_string();
 
-                        println!("file name pre decryption: {}", file_name);
                         // file name decryption
                         let decoded_vec = general_purpose::URL_SAFE.decode(&file_name)?;
                         let decrypted_vec = match decrypt_data(&decoded_vec, password_hash.as_str())
@@ -317,13 +317,11 @@ fn handle_ui_backup_request(
                             paths.get("temp_files_path").unwrap().clone(),
                             decrypted_path
                         );
-                        println!("file_path: {}", file_path);
                         let parent_path = Path::new(&file_path)
                             .parent()
                             .and_then(|p| p.to_str())
                             .unwrap_or("")
                             .to_string();
-                        println!("parent_path: {}", parent_path);
                         let request = VfsRequest {
                             path: format!("/{}", parent_path).to_string(),
                             action: VfsAction::CreateDirAll,
@@ -333,7 +331,6 @@ fn handle_ui_backup_request(
                             .body(serde_json::to_vec(&request)?)
                             .send_and_await_response(5)?;
                         let _dir = open_dir(&parent_path, false, Some(5))?;
-                        println!("parent path created: {}", parent_path);
 
                         // chunking and decrypting
                         // have to deal with encryption change the length of buffer
@@ -348,7 +345,6 @@ fn handle_ui_backup_request(
                             let mut buffer = vec![0; length as usize];
                             let _pos = active_file.seek(SeekFrom::Current(0))?;
                             active_file.read_at(&mut buffer)?;
-                            println!("here?4");
 
                             // decrypting data
                             let decrypted_bytes =
@@ -361,22 +357,16 @@ fn handle_ui_backup_request(
                                 };
 
                             let dir = open_dir(&parent_path, false, None)?;
-                            println!("here2.5");
 
                             let entries = dir.read()?;
-                            println!("here2.6");
 
                             if entries.contains(&DirEntry {
                                 path: file_path[1..].to_string(),
                                 file_type: FileType::File,
                             }) {
                             } else {
-                                println!("here2.7");
-
                                 let _file = create_file(&file_path, Some(5))?;
                             }
-
-                            println!("here3");
 
                             let mut file = open_file(&file_path, false, Some(5))?;
                             file.append(&decrypted_bytes)?;
@@ -417,6 +407,7 @@ fn handle_ui_backup_request(
 fn handle_backup_message(
     our: &Address,
     state: &mut State,
+    paths: &HashMap<&str, String>,
     message: &Message,
 ) -> anyhow::Result<()> {
     match &message {
@@ -427,11 +418,14 @@ fn handle_backup_message(
                 ClientRequest::BackupRetrieve { worker_address } => {
                     let our_worker_address = initialize_worker(our.clone())?;
                     let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                            request_type: WorkerRequestType::RetrievingBackup,
-                            uploader_node: None,
-                            target_worker: Some(worker_address),
+                        .body(serde_json::to_vec(&WorkerRequest::InitializeSendWorker {
+                            target_worker: worker_address.clone(),
                             password_hash: None,
+                            sending_from_dir: format!(
+                                "{}/{}",
+                                paths.get("encrypted_storage_path").unwrap(),
+                                worker_address.node()
+                            ),
                         })?)
                         .target(&our_worker_address)
                         .send()?;
@@ -469,14 +463,17 @@ fn handle_backup_message(
                         Response::new().body(backup_response).send();
 
                     let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                            request_type: WorkerRequestType::BackingUp,
-                            uploader_node: Some(message.source().node.clone()),
-                            target_worker: None,
-                            password_hash: None,
-                        })?)
+                        .body(serde_json::to_vec(
+                            &WorkerRequest::InitializeReceiveWorker {
+                                receive_to_dir: format!(
+                                    "{}/{}",
+                                    paths.get("encrypted_storage_path").unwrap().clone(),
+                                    message.source().node.clone()
+                                ),
+                            },
+                        )?)
                         .target(&our_worker_address)
-                        .send_and_await_response(5)??;
+                        .send()?;
                 }
             }
         }
@@ -497,11 +494,10 @@ fn handle_backup_message(
 
                         let our_worker_address = initialize_worker(our.clone())?;
                         let _worker_request = Request::new()
-                            .body(serde_json::to_vec(&WorkerRequest::Initialize {
-                                request_type: WorkerRequestType::BackingUp,
-                                uploader_node: None,
-                                target_worker: Some(worker_address),
+                            .body(serde_json::to_vec(&WorkerRequest::InitializeSendWorker {
+                                target_worker: worker_address,
                                 password_hash: state.backup_info.data_password_hash.clone(),
+                                sending_from_dir: paths.get("our_files_path").unwrap().clone(),
                             })?)
                             .target(&our_worker_address)
                             .send()?;
@@ -588,7 +584,7 @@ fn handle_message(
     let message = await_message()?;
 
     if message.source().node != our.node {
-        handle_backup_message(our, state, &message)?;
+        handle_backup_message(our, state, paths, &message)?;
     }
 
     match message.source().process.to_string().as_str() {
