@@ -12,7 +12,7 @@ use crate::prompts::rag_instruction;
 pub mod structs;
 use structs::State;
 
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 
 pub fn init(state: &mut State) -> anyhow::Result<()> {
     state.base_context = fetch_github_content(
