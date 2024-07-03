@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use kinode_process_lib::{
-    await_message, call_init, get_blob, http, Address, Message, Request, /*, println */
+    await_message, call_init, get_blob, http, Address, Message, Request, /*println*/ 
 };
 use llm_interface::openai::*;
 use stt_interface::*;
@@ -59,6 +59,7 @@ fn fetch_status() -> anyhow::Result<()> {
     let state = State::fetch()
         .ok_or_else(|| anyhow::anyhow!("State being fetched for the first time (or failed)"))?;
     let config = &state.config;
+    println!("Fetched the config as {:?}", config);
     let response_body = serde_json::to_string(&config)?;
     http::send_response(
         http::StatusCode::OK,
@@ -78,6 +79,7 @@ fn submit_config(
     pkgs: &HashMap<Pkg, Address>,
 ) -> anyhow::Result<()> {
     let initial_config = serde_json::from_slice::<InitialConfig>(body_bytes)?;
+    println!("Initial config: {:?}", initial_config);
     match state {
         Some(state_) => {
             println!("Modifying state to {:?}", initial_config);
@@ -155,6 +157,7 @@ fn submit_config(
                 }
             }
         }
+        println!("Saving state");
         state.save();
 
         http::send_response(
