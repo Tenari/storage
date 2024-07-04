@@ -2,6 +2,7 @@
 
 ### Directory Structure
 
+```
 command_center
 │   ├── README.md
 │   ├── command_center
@@ -11,6 +12,7 @@ command_center
 │   │   ├── ui
 │   │   └── worker
 │   ├── files_lib
+```
 
 To disambiguate the 3 levels of `command_center`:
 - outermost - `command_center` the git repo
