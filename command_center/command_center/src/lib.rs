@@ -239,6 +239,7 @@ fn handle_ui_backup_request(
 
                     let backup_request =
                         serde_json::to_vec(&ClientRequest::BackupRequest { size: 0 })?;
+                    println!("node_id: {}", node_id);
                     let _ = Request::to(Address::new(
                         node_id,
                         ("main", "command_center", "appattacc.os"),
@@ -437,7 +438,8 @@ fn handle_backup_message(
                         Response::new().body(backup_response).send();
                 }
                 // receiving backup request from client
-                ClientRequest::BackupRequest { .. } => {
+                ClientRequest::BackupRequest { size } => {
+                    println!("here");
                     // TODO: add criterion here
                     // whether we want to provide backup or not
 
@@ -448,6 +450,7 @@ fn handle_backup_message(
                     state.save();
 
                     let our_worker_address = initialize_worker(our.clone())?;
+                    println!("here1");
 
                     let backup_response: Vec<u8> = serde_json::to_vec(
                         &ServerResponse::BackupRequestResponse(BackupRequestResponse::Confirm {
@@ -456,6 +459,7 @@ fn handle_backup_message(
                     )?;
                     let _resp: Result<(), anyhow::Error> =
                         Response::new().body(backup_response).send();
+                    println!("here2");
 
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
@@ -469,6 +473,7 @@ fn handle_backup_message(
                         )?)
                         .target(&our_worker_address)
                         .send()?;
+                    println!("here3");
                 }
             }
         }
