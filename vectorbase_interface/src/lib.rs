@@ -29,12 +29,15 @@ pub mod rag {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Request {
-        RAG {prompt: String, rag_type: RAGType},
+        RAG { prompt: String, rag_type: RAGType },
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Response {
-        RAG(String),
+        RAG {
+            base_prompt: String,
+            link_prompt: String,
+        },
         Error(String),
     }
 
