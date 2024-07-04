@@ -74,7 +74,7 @@ pub fn generate_rag_response(
         println!("DEBUG: state.base_context would be {} lines long.", state.base_context.lines().count());
         format!("DEBUG_BASE_CONTEXT\n\n{}", link_content)
     } else {
-        format!("{}\n\n{}", state.base_context, link_content)
+        format!("{}\n\n{}\n\nACTUAL PROMPT:\n{}", state.base_context, link_content, prompt)
     };
     let rag_response = RAGResponse::RAG(combined_content.clone());
 
