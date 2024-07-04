@@ -187,7 +187,6 @@ fn init(our: Address) {
 
     println!("OUR WORKER {}", our);
 
-
     let mut receive_chunks_to_dir = String::new();
 
     loop {

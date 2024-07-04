@@ -22,7 +22,8 @@ mod tg_api;
 
 use files_lib::encryption::{decrypt_data, ENCRYPTED_CHUNK_SIZE};
 use files_lib::structs::{
-    BackupRequestResponse, ClientRequest, ServerResponse, UiRequest, WorkerRequest};
+    BackupRequestResponse, ClientRequest, ServerResponse, UiRequest, WorkerRequest, WorkerStatus,
+};
 use files_lib::{import_notes, read_nested_dir_light};
 
 wit_bindgen::generate!({
@@ -177,7 +178,10 @@ fn import_notes_and_respond(body_bytes: &[u8]) -> anyhow::Result<()> {
 
 /////////////////////////////////////////////////
 
-fn initialize_worker(our: Address) -> anyhow::Result<Address> {
+fn initialize_worker(
+    our: Address,
+    current_worker_address: &mut Option<Address>,
+) -> anyhow::Result<()> {
     let our_worker = spawn(
         None,
         &format!("{}/pkg/worker.wasm", our.package_id()),
@@ -186,16 +190,19 @@ fn initialize_worker(our: Address) -> anyhow::Result<Address> {
         vec![],
         false,
     )?;
-    Ok(Address {
+
+    *current_worker_address = Some(Address {
         node: our.node.clone(),
-        process: our_worker,
-    })
+        process: our_worker.clone(),
+    });
+    Ok(())
 }
 
 fn handle_ui_backup_request(
     our: &Address,
     state: &mut State,
     paths: &HashMap<&str, String>,
+    current_worker_address: &mut Option<Address>,
     message: &Message,
 ) -> anyhow::Result<()> {
     match &message {
@@ -206,10 +213,10 @@ fn handle_ui_backup_request(
             match deserialized {
                 // making backup retrieval request to server
                 UiRequest::BackupRetrieve { node_id } => {
-                    let our_worker_address = initialize_worker(our.clone())?;
-
+                    initialize_worker(our.clone(), current_worker_address)?;
+                    
                     let backup_retrieve = serde_json::to_vec(&ClientRequest::BackupRetrieve {
-                        worker_address: our_worker_address.clone(),
+                        worker_address: current_worker_address.clone().unwrap(),
                     })?;
                     let _retrieve_backup = Request::to(Address::new(
                         node_id.clone(),
@@ -225,7 +232,7 @@ fn handle_ui_backup_request(
                                 receive_to_dir: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
                             },
                         )?)
-                        .target(&our_worker_address)
+                        .target(&current_worker_address.clone().unwrap())
                         .send()?;
                 }
                 // making backup request to server
@@ -401,6 +408,7 @@ fn handle_backup_message(
     our: &Address,
     state: &mut State,
     paths: &HashMap<&str, String>,
+    current_worker_address: &mut Option<Address>,
     message: &Message,
 ) -> anyhow::Result<()> {
     match &message {
@@ -409,7 +417,8 @@ fn handle_backup_message(
             match deserialized {
                 // receiving backup retrieval request from client
                 ClientRequest::BackupRetrieve { worker_address } => {
-                    let our_worker_address = initialize_worker(our.clone())?;
+                    initialize_worker(our.clone(), current_worker_address)?;
+
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
                             target_worker: worker_address.clone(),
@@ -420,7 +429,7 @@ fn handle_backup_message(
                                 worker_address.node()
                             ),
                         })?)
-                        .target(&our_worker_address)
+                        .target(&current_worker_address.clone().unwrap())
                         .send()?;
 
                     let backup_response: Vec<u8> =
@@ -446,12 +455,11 @@ fn handle_backup_message(
                         .insert(message.source().node.to_string(), chrono::Utc::now());
                     state.save();
 
-                    let our_worker_address = initialize_worker(our.clone())?;
-                    println!("here1");
+                    initialize_worker(our.clone(), current_worker_address)?;
 
                     let backup_response: Vec<u8> = serde_json::to_vec(
                         &ServerResponse::BackupRequestResponse(BackupRequestResponse::Confirm {
-                            worker_address: our_worker_address.clone(),
+                            worker_address: current_worker_address.clone().unwrap(),
                         }),
                     )?;
                     let _resp: Result<(), anyhow::Error> =
@@ -468,7 +476,7 @@ fn handle_backup_message(
                                 ),
                             },
                         )?)
-                        .target(&our_worker_address)
+                        .target(&current_worker_address.clone().unwrap())
                         .send()?;
                     println!("here3");
                 }
@@ -489,14 +497,15 @@ fn handle_backup_message(
                             message.source().node,
                         );
 
-                        let our_worker_address = initialize_worker(our.clone())?;
+                        initialize_worker(our.clone(), current_worker_address)?;
+
                         let _worker_request = Request::new()
                             .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
                                 target_worker: worker_address,
                                 password_hash: state.backup_info.data_password_hash.clone(),
                                 sending_from_dir: paths.get("our_files_path").unwrap().clone(),
                             })?)
-                            .target(&our_worker_address)
+                            .target(&current_worker_address.clone().unwrap())
                             .send()?;
 
                         state.backup_info.notes_last_backed_up_at = Some(chrono::Utc::now());
@@ -577,22 +586,34 @@ fn handle_message(
     state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
     paths: &HashMap<&str, String>,
+    current_worker_address: &mut Option<Address>,
 ) -> anyhow::Result<()> {
     let message = await_message()?;
 
     if message.source().node != our.node {
-        handle_backup_message(our, state, paths, &message)?;
+        handle_backup_message(our, state, paths, current_worker_address, &message)?;
     }
 
-    match message.source().process.to_string().as_str() {
-        "http_server:distro:sys" | "http_client:distro:sys" => {
-            handle_http_message(state, pkgs, paths, &message)
-        }
-        
-        // helper for debugging. remove for prod.
-        // it takes inputs from the teriminal
-        _ => handle_ui_backup_request(our, state, paths, &message),
+    if let "http_server:distro:sys" | "http_client:distro:sys" = message.source().process.to_string().as_str() {
+        return handle_http_message(state, pkgs, paths, &message)
     }
+
+    if let Some(worker_address) = current_worker_address  {
+        if worker_address == message.source() {
+            match serde_json::from_slice(&message.body())? {
+                WorkerStatus::Done => {
+                    println!("received backup complete from worker");
+                    *current_worker_address = None;
+                    println!("current worker address after done: {:?}", current_worker_address);
+                    return Ok(())
+                }
+            }
+        }
+    }
+        
+    // helper for debugging. remove for prod.
+    // it takes inputs from the teriminal
+    handle_ui_backup_request(our, state, paths, current_worker_address, &message)
 }
 
 const ICON: &str = include_str!("icon");
@@ -679,10 +700,10 @@ fn init(our: Address) {
     );
     paths.insert("encrypted_storage_path", encrypted_storage_path);
 
-    // let mut current_worker_address: Address = Address::new();
+    let mut current_worker_address: Option<Address> = None;
 
     loop {
-        match handle_message(&our, &mut state, &pkgs, &paths) {
+        match handle_message(&our, &mut state, &pkgs, &paths, &mut current_worker_address) {
             Ok(_) => {}
             Err(e) => println!("Error: {:?}", e),
         }
