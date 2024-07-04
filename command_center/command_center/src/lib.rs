@@ -178,6 +178,7 @@ fn import_notes_and_respond(body_bytes: &[u8]) -> anyhow::Result<()> {
 
 /////////////////////////////////////////////////
 
+// spawns a worker process for file transfer (whether it will be for receiving or sending)
 fn initialize_worker(
     our: Address,
     current_worker_address: &mut Option<Address>,
@@ -191,6 +192,7 @@ fn initialize_worker(
         false,
     )?;
 
+    // temporarily stores worker address as while the worker is alive
     *current_worker_address = Some(Address {
         node: our.node.clone(),
         process: our_worker.clone(),
@@ -198,6 +200,8 @@ fn initialize_worker(
     Ok(())
 }
 
+// for making backup related requests from the ui
+// currently, terminal requests are funneled to this, as the ui requests are not built yet. see `fn handle_message`.
 fn handle_ui_backup_request(
     our: &Address,
     state: &mut State,
@@ -208,13 +212,33 @@ fn handle_ui_backup_request(
     match &message {
         Message::Request { body, .. } => {
             let deserialized = serde_json::from_slice::<UiRequest>(body)?;
-
-            // abstract into separate fn, maybe handle_ui_backups_message
             match deserialized {
-                // making backup retrieval request to server
+                // making backup request to server
+                UiRequest::BackupRequest {
+                    node_id,
+                    password_hash,
+                    ..
+                } => {
+                    // need password_hash to encrypt data with. necessary for decryption later.
+                    // temporarily storing password_hash, as soon as we get a ServerResponse::Confirm, it's deleted
+                    state.backup_info.data_password_hash = Some(password_hash.clone());
+                    state.save();
+
+                    let backup_request =
+                        serde_json::to_vec(&ClientRequest::BackupRequest { size: 0 })?;
+                    let _ = Request::to(Address::new(
+                        node_id,
+                        ("main", "command_center", "appattacc.os"),
+                    ))
+                    .expects_response(5)
+                    .body(backup_request)
+                    .send();
+                }
+                // client making backup retrieval request to server
                 UiRequest::BackupRetrieve { node_id } => {
+                    // spawn receiving worker
                     initialize_worker(our.clone(), current_worker_address)?;
-                    
+
                     let backup_retrieve = serde_json::to_vec(&ClientRequest::BackupRetrieve {
                         worker_address: current_worker_address.clone().unwrap(),
                     })?;
@@ -226,38 +250,23 @@ fn handle_ui_backup_request(
                     .body(backup_retrieve)
                     .send();
 
+                    // start receiving data on the worker
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
                             &WorkerRequest::InitializeReceiverWorker {
-                                receive_to_dir: paths.get("retrieved_encrypted_backup_path").unwrap().clone(),
+                                receive_to_dir: paths
+                                    .get("retrieved_encrypted_backup_path")
+                                    .unwrap()
+                                    .clone(),
                             },
                         )?)
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
                 }
-                // making backup request to server
-                UiRequest::BackupRequest {
-                    node_id,
-                    password_hash,
-                    ..
-                } => {
-                    state.backup_info.data_password_hash = Some(password_hash.clone());
-                    state.save();
-
-                    let backup_request =
-                        serde_json::to_vec(&ClientRequest::BackupRequest { size: 0 })?;
-                    println!("node_id: {}", node_id);
-                    let _ = Request::to(Address::new(
-                        node_id,
-                        ("main", "command_center", "appattacc.os"),
-                    ))
-                    .expects_response(5)
-                    .body(backup_request)
-                    .send();
-                }
                 // decrypt retrieved backup
                 UiRequest::Decrypt { password_hash, .. } => {
                     // /command_center:appattacc.os/retrieved_encrypted_backup
+                    // this is the folder where we retrieved the encrypted backup
                     let dir_entry: DirEntry = DirEntry {
                         path: paths
                             .get("retrieved_encrypted_backup_path")
@@ -266,6 +275,7 @@ fn handle_ui_backup_request(
                         file_type: FileType::Directory,
                     };
 
+                    // remove and re-create temp_files_path so it's empty
                     let request: VfsRequest = VfsRequest {
                         path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::RemoveDirAll,
@@ -274,7 +284,6 @@ fn handle_ui_backup_request(
                         .target(("our", "vfs", "distro", "sys"))
                         .body(serde_json::to_vec(&request)?)
                         .send_and_await_response(5)?;
-
                     let request: VfsRequest = VfsRequest {
                         path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::CreateDirAll,
@@ -284,16 +293,18 @@ fn handle_ui_backup_request(
                         .body(serde_json::to_vec(&request)?)
                         .send_and_await_response(5)?;
 
+                    // get all the paths, not content
                     let dir = read_nested_dir_light(dir_entry)?;
-                    // decrypt each file
+                    // iterate over all files, and decrypt each one
                     for path in dir.keys() {
                         let mut active_file = open_file(path, false, Some(5))?;
-
-                        // chunk the data
                         let size = active_file.metadata()?.len;
+                        // make sure we start from 0th position every time,
+                        // there were some bugs related to files not being closed, so we would start reading from the previous location
                         let _pos = active_file.seek(SeekFrom::Start(0))?;
 
-                        // path: e.g. command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7g...htLlOiu_E3A
+                        // the path of each encrypted file looks like so:
+                        // command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7g...htLlOiu_E3A
                         let path = Path::new(path);
                         let file_name = path
                             .file_name()
@@ -303,7 +314,11 @@ fn handle_ui_backup_request(
                             .to_string();
 
                         // file name decryption
+                        //
+                        // base64/url_safe encoded encrypted file name -> base64 decoded (still encrypted)
+                        // base64 was necessary because of file names not accepting all encrypted chars
                         let decoded_vec = general_purpose::URL_SAFE.decode(&file_name)?;
+                        // decoded, encrypted file name -> decrypted file name
                         let decrypted_vec = match decrypt_data(&decoded_vec, password_hash.as_str())
                         {
                             Ok(vec) => vec,
@@ -315,16 +330,20 @@ fn handle_ui_backup_request(
                         let decrypted_path = String::from_utf8(decrypted_vec).map_err(|e| {
                             anyhow::anyhow!("Failed to convert bytes to string: {}", e)
                         })?;
+                        // get full file_path
+                        // one encrypted file name (e.g. q23ewdfvwerv) could be decrypted to a file nested in a folder (e.g. a/b/c/file.md)
                         let file_path = format!(
                             "{}/{}",
                             paths.get("temp_files_path").unwrap().clone(),
                             decrypted_path
                         );
+                        // parent path becomes e.g. a/b/c, separated out from a/b/c/file.md 
                         let parent_path = Path::new(&file_path)
                             .parent()
                             .and_then(|p| p.to_str())
                             .unwrap_or("")
                             .to_string();
+                        // creates nested parent directory (/a/b/c) all the way to the file
                         let request = VfsRequest {
                             path: format!("/{}", parent_path).to_string(),
                             action: VfsAction::CreateDirAll,
@@ -335,11 +354,16 @@ fn handle_ui_backup_request(
                             .send_and_await_response(5)?;
                         let _dir = open_dir(&parent_path, false, Some(5))?;
 
-                        // chunking and decrypting
-                        // have to deal with encryption change the length of buffer
-                        // hence offset needs to be accumulated and length of each chunk sent can change
+                        // chunking and decrypting each file
+                        //
+                        // must be decrypted at specific encrypted chunk size.
+                        // encrypted chunk size = chunk size + 44, see files_lib/src/encryption.rs
+                        //
+                        // potential pitfall in the future is if we modify chunk size, 
+                        // and try to decrypt at size non corresponding to the size at which it was encrypted. 
                         let num_chunks = (size as f64 / ENCRYPTED_CHUNK_SIZE as f64).ceil() as u64;
 
+                        // iterate over encrypted file
                         for i in 0..num_chunks {
                             let offset = i * ENCRYPTED_CHUNK_SIZE;
                             let length = ENCRYPTED_CHUNK_SIZE.min(size - offset); // size=file size
@@ -347,7 +371,7 @@ fn handle_ui_backup_request(
                             let _pos = active_file.seek(SeekFrom::Current(0))?;
                             active_file.read_at(&mut buffer)?;
 
-                            // decrypting data
+                            // decrypt data with password_hash
                             let decrypted_bytes =
                                 match decrypt_data(&buffer, password_hash.as_str()) {
                                     Ok(vec) => vec,
@@ -359,6 +383,7 @@ fn handle_ui_backup_request(
 
                             let dir = open_dir(&parent_path, false, None)?;
 
+                            // there is an issue with open_file(create: true), so we have to do it manually
                             let entries = dir.read()?;
                             if entries.contains(&DirEntry {
                                 path: file_path[1..].to_string(),
@@ -372,9 +397,9 @@ fn handle_ui_backup_request(
                             file.append(&decrypted_bytes)?;
                         }
                     }
-
-                    // remove after all decryption is successful,
-                    // remove files folder and rename files_temp to files
+                    // after all decryption is successful, the files are stored in the files_temp folder.
+                    // we remove the files folder (where our current notes are stored), and rename files_temp to files,
+                    // effectively overwriting files.
                     let request: VfsRequest = VfsRequest {
                         path: paths.get("our_files_path").unwrap().clone(),
                         action: VfsAction::RemoveDirAll,
@@ -383,7 +408,6 @@ fn handle_ui_backup_request(
                         .target(("our", "vfs", "distro", "sys"))
                         .body(serde_json::to_vec(&request)?)
                         .send_and_await_response(5)?;
-
                     let request: VfsRequest = VfsRequest {
                         path: paths.get("temp_files_path").unwrap().clone(),
                         action: VfsAction::Rename {
@@ -394,7 +418,7 @@ fn handle_ui_backup_request(
                         .target(("our", "vfs", "distro", "sys"))
                         .body(serde_json::to_vec(&request)?)
                         .send_and_await_response(5)?;
-
+                    // create empty files_temp for future use
                     let _ = create_drive(our.package_id(), "files_temp", Some(5));
                 }
             }
@@ -420,15 +444,17 @@ fn handle_backup_message(
                     initialize_worker(our.clone(), current_worker_address)?;
 
                     let _worker_request = Request::new()
-                        .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
-                            target_worker: worker_address.clone(),
-                            password_hash: None,
-                            sending_from_dir: format!(
-                                "{}/{}",
-                                paths.get("encrypted_storage_path").unwrap(),
-                                worker_address.node()
-                            ),
-                        })?)
+                        .body(serde_json::to_vec(
+                            &WorkerRequest::InitializeSenderWorker {
+                                target_worker: worker_address.clone(),
+                                password_hash: None,
+                                sending_from_dir: format!(
+                                    "{}/{}",
+                                    paths.get("encrypted_storage_path").unwrap(),
+                                    worker_address.node()
+                                ),
+                            },
+                        )?)
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
 
@@ -500,11 +526,13 @@ fn handle_backup_message(
                         initialize_worker(our.clone(), current_worker_address)?;
 
                         let _worker_request = Request::new()
-                            .body(serde_json::to_vec(&WorkerRequest::InitializeSenderWorker {
-                                target_worker: worker_address,
-                                password_hash: state.backup_info.data_password_hash.clone(),
-                                sending_from_dir: paths.get("our_files_path").unwrap().clone(),
-                            })?)
+                            .body(serde_json::to_vec(
+                                &WorkerRequest::InitializeSenderWorker {
+                                    target_worker: worker_address,
+                                    password_hash: state.backup_info.data_password_hash.clone(),
+                                    sending_from_dir: paths.get("our_files_path").unwrap().clone(),
+                                },
+                            )?)
                             .target(&current_worker_address.clone().unwrap())
                             .send()?;
 
@@ -594,23 +622,28 @@ fn handle_message(
         handle_backup_message(our, state, paths, current_worker_address, &message)?;
     }
 
-    if let "http_server:distro:sys" | "http_client:distro:sys" = message.source().process.to_string().as_str() {
-        return handle_http_message(state, pkgs, paths, &message)
+    if let "http_server:distro:sys" | "http_client:distro:sys" =
+        message.source().process.to_string().as_str()
+    {
+        return handle_http_message(state, pkgs, paths, &message);
     }
 
-    if let Some(worker_address) = current_worker_address  {
+    if let Some(worker_address) = current_worker_address {
         if worker_address == message.source() {
             match serde_json::from_slice(&message.body())? {
                 WorkerStatus::Done => {
                     println!("received backup complete from worker");
                     *current_worker_address = None;
-                    println!("current worker address after done: {:?}", current_worker_address);
-                    return Ok(())
+                    println!(
+                        "current worker address after done: {:?}",
+                        current_worker_address
+                    );
+                    return Ok(());
                 }
             }
         }
     }
-        
+
     // helper for debugging. remove for prod.
     // it takes inputs from the teriminal
     handle_ui_backup_request(our, state, paths, current_worker_address, &message)

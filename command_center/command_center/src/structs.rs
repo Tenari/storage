@@ -50,8 +50,12 @@ pub struct ApiKeys {
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct BackupInfo {
+    // temporarily stores the password hash for encryption and decryption purposes
     pub data_password_hash: Option<String>,
+    // used by backup provider to track which nodes it is providing backups to
     pub backups_time_map: HashMap<NodeId, DateTime<Utc>>,
+    // when we last backed up our notes
     pub notes_last_backed_up_at: Option<DateTime<Utc>>,
+    // our backup provider
     pub notes_backup_provider: Option<NodeId>,
 }
