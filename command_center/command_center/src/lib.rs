@@ -280,15 +280,13 @@ fn handle_ui_backup_request(
                     let dir = read_nested_dir_light(dir_entry)?;
                     // decrypt each file
                     for path in dir.keys() {
-                        // open/create empty file
                         let mut active_file = open_file(path, false, Some(5))?;
 
                         // chunk the data
                         let size = active_file.metadata()?.len;
-
                         let _pos = active_file.seek(SeekFrom::Start(0))?;
 
-                        // path: e.g. command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A
+                        // path: e.g. command_center:appattacc.os/retrieved_encrypted_backup/GAXPVM7g...htLlOiu_E3A
                         let path = Path::new(path);
                         let file_name = path
                             .file_name()
@@ -355,7 +353,6 @@ fn handle_ui_backup_request(
                             let dir = open_dir(&parent_path, false, None)?;
 
                             let entries = dir.read()?;
-
                             if entries.contains(&DirEntry {
                                 path: file_path[1..].to_string(),
                                 file_type: FileType::File,
@@ -591,6 +588,7 @@ fn handle_message(
         "http_server:distro:sys" | "http_client:distro:sys" => {
             handle_http_message(state, pkgs, paths, &message)
         }
+        
         // helper for debugging. remove for prod.
         // it takes inputs from the teriminal
         _ => handle_ui_backup_request(our, state, paths, &message),
@@ -680,6 +678,8 @@ fn init(our: Address) {
         retrieved_encrypted_backup_path,
     );
     paths.insert("encrypted_storage_path", encrypted_storage_path);
+
+    // let mut current_worker_address: Address = Address::new();
 
     loop {
         match handle_message(&our, &mut state, &pkgs, &paths) {

@@ -9,7 +9,7 @@ use kinode_process_lib::{
 
 use files_lib::encryption::{encrypt_data, CHUNK_SIZE};
 use files_lib::read_nested_dir_light;
-use files_lib::structs::WorkerRequest;
+use files_lib::structs::{WorkerRequest, WorkerStatus};
 
 wit_bindgen::generate!({
     path: "target/wit",
@@ -57,19 +57,17 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                                     rest_of_path.as_bytes(),
                                     pw_hash.as_str(),
                                 );
-                                let rest_of_path =
-                                    general_purpose::URL_SAFE.encode(&encrypted_vec);
-                                rest_of_path
+                                general_purpose::URL_SAFE.encode(&encrypted_vec)
                             } else {
                                 return Err(anyhow::anyhow!(
                                     "Path does not start with the expected prefix"
                                 ));
                             }
-                        } else // doesnt encrypt file name
-                        {
-                            // path: e.g. command_center:appattacc.os/encrypted_storage/node-name.os/GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A.md
-                            // file_name in request:
-                            // GAXPVM7gDutxI3DnsFfhYk5H8vsuYPR1HIXLjJIpFcp4Ip_iXhl7u3voPX_uerfadAldI3PAKVYr0TpPk7qTndv3adGSGWMp9GLUuxPdOLUt84zyETiFgdm2kyYA0pihtLlOiu_E3A==
+                        } 
+                        // doesnt encrypt file name
+                        else {
+                            // path: e.g. command_center:appattacc.os/encrypted_storage/node-name.os/GAXPVM7gDut...tLlOiu_E3A
+                            // file_name in request: GAXP...A0pihtLlOiu_E3A==
                             let path = Path::new(path);
                             path
                                 .file_name()
@@ -139,7 +137,6 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                     path: full_path.to_string(),
                     action: VfsAction::CreateDirAll,
                 };
-
                 let _message = Request::new()
                     .target(("our", "vfs", "distro", "sys"))
                     .body(serde_json::to_vec(&request)?)
@@ -151,7 +148,6 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                     return Ok(true);
                 }
                 let blob = get_blob();
-
                 let path_to_dir = &receive_chunks_to_dir[1..]; // just skipping the initial '/'
 
                 let file_path = format!("/{}/{}", path_to_dir, &file_name);
@@ -168,7 +164,6 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                 let dir = open_dir(&path_to_dir, false, None)?;
 
                 let entries = dir.read()?;
-
                 if entries.contains(&DirEntry {
                     path: file_path[1..].to_string(),
                     file_type: FileType::File,
@@ -186,9 +181,12 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
 }
 
 call_init!(init);
-fn init(_our: Address) {
+fn init(our: Address) {
     println!("command_center worker: begin");
     let start = std::time::Instant::now();
+
+    println!("OUR WORKER {}", our);
+
 
     let mut receive_chunks_to_dir = String::new();
 
@@ -200,6 +198,13 @@ fn init(_our: Address) {
                         "command_center worker: done: exiting, took {:?}",
                         start.elapsed()
                     );
+                    let _ = Request::new()
+                    .body(serde_json::to_vec(&WorkerStatus::Done).unwrap())
+                    .target(
+                        Address::new(
+                        our.node(),
+                        ("main", "command_center", "appattacc.os")))
+                    .send();
                     break;
                 }
             }
