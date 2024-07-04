@@ -4,6 +4,10 @@
 
 Boot up 2 real nodes. Real ones are preferable because we are working with file storage which is easier to persist this way.
 
+For the purposes of this tutorial:
+- `node.os` is at `home`
+- `node2.os` is at `home2`
+
 ```bash
 ./binary/kinode home
 ./binary/kinode home2
@@ -30,28 +34,28 @@ In the UI you should be able to use the following tabs:
 - Notes - check backup status, search notes, view directory structure, and view notes in markdown
 - Provided backups - see backups which you are providing for other nodes
 
-Backup functionality is a work in progress, so it may not work correctly.
+UI functionality related to backups is a work in progress, so it may not work correctly.
 
 ### Dev Setup for Backups
 
-`node1.os` at `home` will be backing up their notes to `node2.os` at `home2`.
+`node.os` at `home` folder will be backing up their notes to `node2.os` at `home2` folder.
 
-Import notes via ui on `node1.os`, they should show up here:
+Import notes via ui on `node.os`, they should show up here:
 ```bash 
 cd home/vfs/command_center:appattacc.os/files
 ls
 ```
 
-Throughout the rest of the tutorial, replace `node1.os` and `node2.os` with the node ids of your nodes.
+Throughout the rest of the tutorial, replace `node.os` and `node2.os` with the node ids of your nodes.
 
 #### Backing Up
 
-To back them up, in `node1.os` terminal, run:
+To back them up, in `node.os` terminal, run:
 ```
-m node1.os@main:command_center:appattacc.os '{"BackupRequest": {"node_id": "node2.os", "size": 0, "password_hash": "somehash"}}'
+m node.os@main:command_center:appattacc.os '{"BackupRequest": {"node_id": "node2.os", "size": 0, "password_hash": "somehash"}}'
 ```
 
-In `node2.os` `home2`, you should find a folder called `node1.os`:
+In `node2.os` `home2`, you should find a folder called `node.os`:
 ``` bash
 cd home2/vfs/command_center:appattacc.os/encrypted_storage/
 ls
@@ -59,18 +63,18 @@ ls
 
 Inside that folder should be a bunch of encrypted files
 ```bash
-cd node1.os
+cd node.os
 ls
 ```
 
 #### Retrieving Backup
 
-To retrieve the backup to `node1.os`, in `node1.os` terminal, run:
+To retrieve the backup to `node.os`, in `node.os` terminal, run:
 ```bash
-m node1.os@main:command_center:appattacc.os '{"BackupRetrieve": {"node_id": "node2.os"}}'
+m node.os@main:command_center:appattacc.os '{"BackupRetrieve": {"node_id": "node2.os"}}'
 ```
 
-In `node1.os` `home`, you should find a folder called `retrieved_encrypted_backup` containing the same encrypted files which are backed up to `node2.os`:
+In `node.os` `home`, you should find a folder called `retrieved_encrypted_backup` containing the same encrypted files which are backed up to `node2.os`:
 ```bash
 cd home/vfs/command_center:appattacc.os/retrieved_encrypted_backup
 ls
@@ -80,12 +84,12 @@ ls
 
 Warning: this will overwrite any changes to the notes you made in the `files` directory in the meantime.
 
-To decrypt this data, in `node1.os` terminal, run:
+To decrypt this data, in `node.os` terminal, run:
 ```bash
-m node1.os@main:command_center:appattacc.os '{"Decrypt": {"password_hash": "somehash"}}'
+m node.os@main:command_center:appattacc.os '{"Decrypt": {"password_hash": "somehash"}}'
 ```
 
-In `node1.os` `home`, look at `files`, they should contain the decrypted data.
+In `node.os` `home`, look at `files`, they should contain the decrypted data.
 ```bash
 cd home/vfs/command_center:appattacc.os/files
 ls
