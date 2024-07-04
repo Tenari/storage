@@ -337,7 +337,7 @@ fn handle_ui_backup_request(
                             paths.get("temp_files_path").unwrap().clone(),
                             decrypted_path
                         );
-                        // parent path becomes e.g. a/b/c, separated out from a/b/c/file.md 
+                        // parent path becomes e.g. a/b/c, separated out from a/b/c/file.md
                         let parent_path = Path::new(&file_path)
                             .parent()
                             .and_then(|p| p.to_str())
@@ -359,8 +359,8 @@ fn handle_ui_backup_request(
                         // must be decrypted at specific encrypted chunk size.
                         // encrypted chunk size = chunk size + 44, see files_lib/src/encryption.rs
                         //
-                        // potential pitfall in the future is if we modify chunk size, 
-                        // and try to decrypt at size non corresponding to the size at which it was encrypted. 
+                        // potential pitfall in the future is if we modify chunk size,
+                        // and try to decrypt at size non corresponding to the size at which it was encrypted.
                         let num_chunks = (size as f64 / ENCRYPTED_CHUNK_SIZE as f64).ceil() as u64;
 
                         // iterate over encrypted file
@@ -428,6 +428,7 @@ fn handle_ui_backup_request(
     }
 }
 
+// handles backup related messages from another node
 fn handle_backup_message(
     our: &Address,
     state: &mut State,
@@ -439,37 +440,7 @@ fn handle_backup_message(
         Message::Request { body, .. } => {
             let deserialized: ClientRequest = serde_json::from_slice::<ClientRequest>(body)?;
             match deserialized {
-                // receiving backup retrieval request from client
-                ClientRequest::BackupRetrieve { worker_address } => {
-                    initialize_worker(our.clone(), current_worker_address)?;
-
-                    let _worker_request = Request::new()
-                        .body(serde_json::to_vec(
-                            &WorkerRequest::InitializeSenderWorker {
-                                target_worker: worker_address.clone(),
-                                password_hash: None,
-                                sending_from_dir: format!(
-                                    "{}/{}",
-                                    paths.get("encrypted_storage_path").unwrap(),
-                                    worker_address.node()
-                                ),
-                            },
-                        )?)
-                        .target(&current_worker_address.clone().unwrap())
-                        .send()?;
-
-                    let backup_response: Vec<u8> =
-                        serde_json::to_vec(&ServerResponse::BackupRetrieveResponse(
-                            state
-                                .backup_info
-                                .backups_time_map
-                                .get(&message.source().node)
-                                .copied(),
-                        ))?;
-                    let _resp: Result<(), anyhow::Error> =
-                        Response::new().body(backup_response).send();
-                }
-                // receiving backup request from client
+                // server receiving backup request from client
                 ClientRequest::BackupRequest { size } => {
                     println!("here");
                     // TODO: add criterion here
@@ -505,6 +476,36 @@ fn handle_backup_message(
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
                     println!("here3");
+                }
+                // receiving backup retrieval request from client
+                ClientRequest::BackupRetrieve { worker_address } => {
+                    initialize_worker(our.clone(), current_worker_address)?;
+
+                    let _worker_request = Request::new()
+                        .body(serde_json::to_vec(
+                            &WorkerRequest::InitializeSenderWorker {
+                                target_worker: worker_address.clone(),
+                                password_hash: None,
+                                sending_from_dir: format!(
+                                    "{}/{}",
+                                    paths.get("encrypted_storage_path").unwrap(),
+                                    worker_address.node()
+                                ),
+                            },
+                        )?)
+                        .target(&current_worker_address.clone().unwrap())
+                        .send()?;
+
+                    let backup_response: Vec<u8> =
+                        serde_json::to_vec(&ServerResponse::BackupRetrieveResponse(
+                            state
+                                .backup_info
+                                .backups_time_map
+                                .get(&message.source().node)
+                                .copied(),
+                        ))?;
+                    let _resp: Result<(), anyhow::Error> =
+                        Response::new().body(backup_response).send();
                 }
             }
         }
