@@ -2,11 +2,11 @@
 
 ### Quick Start
 
-Boot up 2 real nodes. Real ones are preferable because we are working with file storage which is easier to persist this way.
-
 For the purposes of this tutorial:
 - `node.os` is at `home`
 - `node2.os` is at `home2`
+
+Boot up 2 real nodes. Real ones are preferable because we are working with file storage which is easier to persist this way.
 
 ```bash
 ./binary/kinode home
