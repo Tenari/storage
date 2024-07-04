@@ -1,5 +1,24 @@
 # Command Center
 
+### Directory Structure
+
+command_center
+│   ├── README.md
+│   ├── command_center
+│   │   ├── ai_chatbot_demo
+│   │   ├── command_center
+│   │   ├── pkg
+│   │   ├── ui
+│   │   └── worker
+│   ├── files_lib
+
+To disambiguate the 3 levels of `command_center`:
+- outermost - `command_center` the git repo
+- middle - `command_center` the package
+- innermost - `command_center` the process
+
+`files_lib` is a package, used as a shared library by the `command_center` and `worker` processes.
+
 ### Quick Start
 
 For the purposes of this tutorial:
@@ -103,3 +122,4 @@ ls
 - a setting which allows a node to say: "I provide backups" or "I do not provide backups". Additionally, whitelisting and blacklisting by arbitrary criteria can be done.
 - editing notes via markdown and propagating the changes to backend, then to backup
 - vector search your notes
+
