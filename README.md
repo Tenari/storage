@@ -135,3 +135,8 @@ ls
 - editing notes via markdown and propagating the changes to backend, then to backup
 - vector search your notes
 
+### Backup Diagrams
+
+- [ClientRequest::BackupRequest](https://swimlanes.io/#jZFBTsQwDEX3OYUPABwgCxaUDdtWiCWNUsNYzTidxAGJ05OkA6MhHWAXW/8/ff8IiUMNd8bOxK/wuCjlw4RBg3WELPDuw4zh6mu0++nZ5kdZRQxvGLZWq0mpxgTXt61Nw9hVYY+HhFG0LnHSchxHpRpL4TTwzBmqsMe4eI74A3Rad55fKOwvkc+uyNSn+vhO98AkZBx9YI8WKUtXwXjh4LMmf8MNyFMLW33/yNXtEs8jKPaCpdM6RjABszODxIPsEEINXX77SE4s5MA4B5MRAxSr/GYjwFbla4hBjKSo9b1nPNXaRP/bqT4B)
+
+- [ClientRequest::BackupRetrieve](https://swimlanes.io/#jZFBUsMwDEX3PoUOQDmAFyxaNmyTBUviSf5QTYxdbDnMcPo6TtshOGXYSbL+85ckLBaaGkhgTOzeaW/6MZ2U8mFA0NRbhhP68mFEeLim/cfw1udgLkWECWGrtIiUqkS0e6plmrpDaWzwmRBF68XKxRs6pSrNDKroGdSWxgbx5F3Eb9K1fo+4sp9pryW42XpxLGwsf6OFy0tanrs7c64W+BesQQ+efuBWNv6BOhyTGztSzgvmZZY0kgnIE2WdeJIjKJR/5lNfyMkJWzLW0mDEEMfS/nibpzKwWvViohUjKWr97B22rG9de1Opzg==)
