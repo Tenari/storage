@@ -69,7 +69,7 @@ Throughout the rest of the tutorial, replace `node.os` and `node2.os` with the n
 
 #### Backing Up
 
-To back them up, in `node.os` terminal, run:
+To back up the notes, in `node.os` terminal, run:
 ```
 m node.os@main:command_center:appattacc.os '{"BackupRequest": {"node_id": "node2.os", "size": 0, "password_hash": "somehash"}}'
 ```
