@@ -76,6 +76,11 @@ To back up the notes, in `node.os` terminal, run:
 m node.os@main:command_center:appattacc.os '{"BackupRequest": {"node_id": "node2.os", "size": 0, "password_hash": "somehash"}}'
 ```
 
+Wait until in the `node2.os` terminal you see a message like the following:
+```
+command_center:appattacc.os: command_center worker: done: exiting, took 123.456ms
+```
+
 In `node2.os` `home2`, you should find a folder called `node.os`:
 ``` bash
 cd home2/vfs/command_center:appattacc.os/encrypted_storage/
@@ -93,6 +98,11 @@ ls
 To retrieve the backup to `node.os`, in `node.os` terminal, run:
 ```bash
 m node.os@main:command_center:appattacc.os '{"BackupRetrieve": {"node_id": "node2.os"}}'
+```
+
+Wait until in the `node1.os` terminal you see a message like the following:
+```
+command_center:appattacc.os: command_center worker: done: exiting, took 123.456ms
 ```
 
 In `node.os` `home`, you should find a folder called `retrieved_encrypted_backup` containing the same encrypted files which are backed up to `node2.os`:
