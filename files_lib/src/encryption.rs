@@ -9,8 +9,8 @@ use rand::{thread_rng, RngCore};
 // chunk size for backups
 // when building, test with smaller chunk size, because most text files are less
 // than this, so you won't see if it's working properly.
-// const CHUNK_SIZE: u64 = 1048576; // 1MB
-pub const CHUNK_SIZE: u64 = 1024; // 1KB
+pub const CHUNK_SIZE: u64 = 1048576; // 1MB
+// pub const CHUNK_SIZE: u64 = 1024; // 1KB
 pub const ENCRYPTED_CHUNK_SIZE: u64 = CHUNK_SIZE + 44; // that's what encrypted chunks end up being
 
 const SALT_SIZE: usize = 16;

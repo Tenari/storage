@@ -30,7 +30,7 @@ pub enum ClientRequest {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerResponse {
     BackupRequestResponse(BackupRequestResponse),
-    BackupRetrieveResponse(DateTime<Utc>),
+    BackupRetrieveResponse(Option<DateTime<Utc>>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,21 +41,21 @@ pub enum BackupRequestResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum WorkerRequest {
-    Initialize {
-        request_type: WorkerRequestType,
-        uploader_node: Option<NodeId>,
-        target_worker: Option<Address>,
-        password_hash: Option<String>,
+    InitializeSenderWorker {
+        target_worker: Address,
+        password_hash: Option<String>, // if has password_hash, encrypts; otherwise, no encryption
+        sending_from_dir: String,
+    },
+    InitializeReceiverWorker {
+        receive_to_dir: String,
     },
     Chunk {
-        request_type: WorkerRequestType,
         done: bool,
         file_name: String,
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum WorkerRequestType {
-    BackingUp,
-    RetrievingBackup,
+#[derive(Serialize, Deserialize, Debug)]
+pub enum WorkerStatus {
+    Done,
 }
