@@ -560,6 +560,7 @@ fn handle_backup_message(
     return Ok(());
 }
 
+// handles requests from the ui
 fn handle_http_request(
     state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
@@ -577,10 +578,11 @@ fn handle_http_request(
         "/fetch_api_keys" => fetch_api_keys(state),
         "/fetch_backup_data" => fetch_backup_data(state),
         "/submit_api_keys" => submit_api_keys(state, pkgs, &bytes),
-        "/notes" => fetch_notes(paths.get("our_files_path").unwrap()),
+        "/fetch_notes" => fetch_notes(paths.get("our_files_path").unwrap()),
         "/import_notes" => import_notes_from_ui(&bytes),
         "/backup_request" => {
-            // WIP
+            // WIP, should take BackupRequest, BackupRetrieve, and Decrypt
+            // (or decrypt should be done automatically?)
             println!("got /backup_request");
             let deserialized: Result<serde_json::Value, _> = serde_json::from_slice(&bytes);
             match deserialized {
@@ -633,6 +635,7 @@ fn handle_message(
         return handle_http_message(state, pkgs, paths, &message);
     }
 
+    // current worker finishing up
     if let Some(worker_address) = current_worker_address {
         if worker_address == message.source() {
             match serde_json::from_slice(&message.body())? {
@@ -666,7 +669,7 @@ fn init(our: Address) {
             "/",
             "/submit_api_keys",
             "/fetch_api_keys",
-            "/notes",
+            "/fetch_notes",
             "/import_notes",
             "/backup_request",
             "/fetch_backup_data",

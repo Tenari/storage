@@ -123,7 +123,7 @@ function App() {
   const fetchNotes = async () => {
     setNotesResult("Fetching notes and preparing index...");
     try {
-      const response = await fetch("/main:command_center:appattacc.os/notes", {
+      const response = await fetch("/main:command_center:appattacc.os/fetch_notes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
