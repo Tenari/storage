@@ -51,7 +51,7 @@ fn fetch_backup_data(state: &mut State) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn fetch_status(state: &mut State) -> anyhow::Result<()> {
+fn fetch_api_keys(state: &mut State) -> anyhow::Result<()> {
     let config = &state.api_keys;
     let response_body = serde_json::to_string(&config)?;
     http::send_response(
@@ -160,7 +160,7 @@ fn submit_api_keys(
     Ok(())
 }
 
-fn import_notes_and_respond(body_bytes: &[u8]) -> anyhow::Result<()> {
+fn import_notes_from_ui(body_bytes: &[u8]) -> anyhow::Result<()> {
     if import_notes(&body_bytes).is_ok() {
         http::send_response(
             http::StatusCode::OK,
@@ -442,9 +442,9 @@ fn handle_backup_message(
             match deserialized {
                 // server receiving backup request from client
                 ClientRequest::BackupRequest { size } => {
-                    println!("here");
                     // TODO: add criterion here
-                    // whether we want to provide backup or not
+                    // whether we want to provide backup or not.
+                    // currently responds with Confirm, should respond with Confirm or Decline based on a setting
 
                     state
                         .backup_info
@@ -461,8 +461,8 @@ fn handle_backup_message(
                     )?;
                     let _resp: Result<(), anyhow::Error> =
                         Response::new().body(backup_response).send();
-                    println!("here2");
 
+                    // telling the worker to start receiving the backup
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
                             &WorkerRequest::InitializeReceiverWorker {
@@ -475,12 +475,12 @@ fn handle_backup_message(
                         )?)
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
-                    println!("here3");
                 }
-                // receiving backup retrieval request from client
+                // server receiving backup retrieval request from client
                 ClientRequest::BackupRetrieve { worker_address } => {
                     initialize_worker(our.clone(), current_worker_address)?;
 
+                    // telling the worker to start sending the encrypted backup to the client
                     let _worker_request = Request::new()
                         .body(serde_json::to_vec(
                             &WorkerRequest::InitializeSenderWorker {
@@ -496,6 +496,7 @@ fn handle_backup_message(
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
 
+                    // telling the client what time the backup was from
                     let backup_response: Vec<u8> =
                         serde_json::to_vec(&ServerResponse::BackupRetrieveResponse(
                             state
@@ -526,6 +527,7 @@ fn handle_backup_message(
 
                         initialize_worker(our.clone(), current_worker_address)?;
 
+                        // telling the worker to start sending the backup
                         let _worker_request = Request::new()
                             .body(serde_json::to_vec(
                                 &WorkerRequest::InitializeSenderWorker {
@@ -537,9 +539,11 @@ fn handle_backup_message(
                             .target(&current_worker_address.clone().unwrap())
                             .send()?;
 
+                        
                         state.backup_info.notes_last_backed_up_at = Some(chrono::Utc::now());
                         state.backup_info.notes_backup_provider =
                             Some(message.source().node.clone());
+                        // we dont need to store password hash any more
                         state.backup_info.data_password_hash = None;
                         state.save();
                     }
@@ -570,11 +574,11 @@ fn handle_http_request(
         .ok_or_else(|| anyhow::anyhow!("Failed to get blob"))?
         .bytes;
     match path.as_str() {
-        "/status" => fetch_status(state),
+        "/fetch_api_keys" => fetch_api_keys(state),
         "/fetch_backup_data" => fetch_backup_data(state),
         "/submit_api_keys" => submit_api_keys(state, pkgs, &bytes),
         "/notes" => fetch_notes(paths.get("our_files_path").unwrap()),
-        "/import_notes" => import_notes_and_respond(&bytes),
+        "/import_notes" => import_notes_from_ui(&bytes),
         "/backup_request" => {
             // WIP
             println!("got /backup_request");
@@ -661,7 +665,7 @@ fn init(our: Address) {
         vec![
             "/",
             "/submit_api_keys",
-            "/status",
+            "/fetch_api_keys",
             "/notes",
             "/import_notes",
             "/backup_request",

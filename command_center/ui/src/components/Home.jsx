@@ -7,7 +7,7 @@ import Notes from './tab/Notes';
 import ProvidedBackups from './tab/ProvidedBackups';
 
 function Home({
-    fetchStatus,
+    fetchApiKeys,
     importNotes,
     notes, setNotes,
     notesIndex, setNotesIndex,
@@ -29,7 +29,7 @@ function Home({
     }, [notes]);
 
     useEffect(() => {
-        fetchStatus();
+        fetchApiKeys();
         console.log("NTOES BACKED UP AT", notesBackedUpAt);
         console.log("NTOES RPOVIDER", notesBackupProvider);
     }, []);
@@ -102,7 +102,7 @@ function Home({
                 <button id="providedBackups" className="tablinks" onClick={() => setActiveTab('Provided Backups')}>Provided Backups</button>
             </div>
             <div className="h-screen w-screen overflow-hidden flex-col-center items-center justify-center gap-2">
-            <Config fetchStatus={fetchStatus}></Config>
+            <Config fetchApiKeys={fetchApiKeys}></Config>
             <DataCenter messages={messages}></DataCenter>
             <ImportNotes importNotes={importNotes}></ImportNotes>
             <Notes 

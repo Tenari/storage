@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Popup from '../Popup'
 
-function Config({ fetchStatus }) {
+function Config({ fetchApiKeys }) {
     const [isPopupOpen, setIsPopupOpen] = useState(false);
     const [popupContent, setPopupContent] = useState('');
 
@@ -30,7 +30,7 @@ function Config({ fetchStatus }) {
             const data = await response.json();
             if (data.message === 'success') {
                 document.getElementById('result').textContent = 'Success!';
-                fetchStatus();
+                fetchApiKeys();
             } else {
                 document.getElementById('result').textContent = 'Failed to submit key.';
             }
