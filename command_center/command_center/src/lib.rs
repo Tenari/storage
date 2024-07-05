@@ -332,6 +332,7 @@ fn handle_ui_backup_request(
                         let decrypted_path = String::from_utf8(decrypted_vec).map_err(|e| {
                             anyhow::anyhow!("Failed to convert bytes to string: {}", e)
                         })?;
+                        println!("decrypting {}", decrypted_path);
                         // get full file_path
                         // one encrypted file name (e.g. q23ewdfvwerv) could be decrypted to a file nested in a folder (e.g. a/b/c/file.md)
                         let file_path = format!(
@@ -424,6 +425,7 @@ fn handle_ui_backup_request(
                     let _ = create_drive(our.package_id(), "files_temp", Some(5));
                 }
             }
+            println!("decryption done");
             Ok(())
         }
         _ => return Ok(()),
@@ -641,12 +643,7 @@ fn handle_message(
         if worker_address == message.source() {
             match serde_json::from_slice(&message.body())? {
                 WorkerStatus::Done => {
-                    println!("received backup complete from worker");
                     *current_worker_address = None;
-                    println!(
-                        "current worker address after done: {:?}",
-                        current_worker_address
-                    );
                     return Ok(());
                 }
             }

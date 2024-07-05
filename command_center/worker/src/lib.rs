@@ -154,8 +154,11 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                 if done == true {
                     return Ok(true);
                 }
+                
                 let blob = get_blob();
 
+                println!("worker: received new chunk for {}", &file_name);
+                
                 // clunky path manipulation, probably can be cleaned up
                 let path_to_dir = &receive_chunks_to_dir[1..]; // just skipping the initial '/'
                 let file_path = format!("/{}/{}", path_to_dir, &file_name);

@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import TreeNode from '../TreeNode'
 import { Tree } from 'react-arborist';
 

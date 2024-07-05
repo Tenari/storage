@@ -1,5 +1,3 @@
-import { useState } from 'react'
-
 function DataCenter({ messages }) {
     return (
         <div id="Data Center" className="tabcontent">

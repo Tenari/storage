@@ -23,7 +23,7 @@ function FileViewWrapper({ notes }) {
 function App() {
   const [notes, setNotes] = useState({});
   const [notesResult, setNotesResult] = useState("");
-  const [notesIndex, setNotesIndex] = useState(null); // Add this line
+  const [notesIndex, setNotesIndex] = useState(null);
   const [messages, setMessages] = useState([]);
   const [backupsTimeMap, setBackupsTimeMap] = useState(new Map());
   const [notesBackedUpAt, setNotesBackedUpAt] = useState(null);
