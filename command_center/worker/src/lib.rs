@@ -22,23 +22,25 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
     if let Message::Request { ref body, .. } = message {
         let request = serde_json::from_slice::<WorkerRequest>(body)?;
         match request {
+            // initialized from main:command_center:appattacc.os.
+            // we will be sending chunks to `target_worker`, encrypting w/ `password_hash`, from directory `sending_from_dir`
+            // if password_hash is None, we will not be encrypting
             WorkerRequest::InitializeSenderWorker {
                 target_worker,
                 password_hash,
                 sending_from_dir,
             } => {
                 println!("command_center worker: got initialize request");
-                // initialized from main process,
-                // sends data to target worker
                 let dir_entry = DirEntry {
                     path: sending_from_dir.clone(),
                     file_type: FileType::Directory,
                 };
 
-                // outputs map path contents, a flattened version of the nested dir
+                // outputs map(path -> contents) where contents are empty, 
+                // a flattened version of the nested dir
                 let dir = read_nested_dir_light(dir_entry)?;
 
-                // send each file in the folder to the server
+                // send each file from the folder to the server
                 for path in dir.keys() {
                     let mut active_file = open_file(path, false, Some(5))?;
 
@@ -78,6 +80,9 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                         };
 
                     // chunking and sending
+                    //
+                    // handling the edge case if there is 0 bytes, 
+                    // we still want to send one chunk to make sure the empty file is transferred
                     let num_chunks = if size != 0 {
                         (size as f64 / CHUNK_SIZE as f64).ceil() as u64
                     } else {
@@ -116,11 +121,16 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
 
                 return Ok(true);
             }
+            // initialized from main:command_center:appattacc.os.
+            // we will be receivng chunks to directory `receive_to_dir`
             WorkerRequest::InitializeReceiverWorker { receive_to_dir } => {
                 // start receiving data
                 let full_path = receive_to_dir;
                 *receive_chunks_to_dir = full_path.clone();
+                
+                println!("starting to receive data for dir: {}", full_path);
 
+                // removing the dir, and creating a fresh one
                 let request: VfsRequest = VfsRequest {
                     path: full_path.to_string(),
                     action: VfsAction::RemoveDirAll,
@@ -130,9 +140,6 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                     .body(serde_json::to_vec(&request)?)
                     .send_and_await_response(5)?;
 
-                println!("starting to receive data for dir: {}", full_path);
-
-                // maybe this is unnecessary in both cases (whether retrieving backup or backing up)?
                 let request: VfsRequest = VfsRequest {
                     path: full_path.to_string(),
                     action: VfsAction::CreateDirAll,
@@ -142,14 +149,15 @@ fn handle_message(receive_chunks_to_dir: &mut String) -> anyhow::Result<bool> {
                     .body(serde_json::to_vec(&request)?)
                     .send_and_await_response(5)?;
             }
-            // someone sending a chunk to us!
+            // every time we receive a chunk, append to the file
             WorkerRequest::Chunk { file_name, done } => {
                 if done == true {
                     return Ok(true);
                 }
                 let blob = get_blob();
-                let path_to_dir = &receive_chunks_to_dir[1..]; // just skipping the initial '/'
 
+                // clunky path manipulation, probably can be cleaned up
+                let path_to_dir = &receive_chunks_to_dir[1..]; // just skipping the initial '/'
                 let file_path = format!("/{}/{}", path_to_dir, &file_name);
                 let _dir = open_dir(&format!("/{}", path_to_dir), false, Some(5))?;
 
@@ -185,8 +193,7 @@ fn init(our: Address) {
     println!("command_center worker: begin");
     let start = std::time::Instant::now();
 
-    println!("OUR WORKER {}", our);
-
+    // directory to which we will be storing received data
     let mut receive_chunks_to_dir = String::new();
 
     loop {
