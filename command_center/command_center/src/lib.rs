@@ -160,8 +160,10 @@ fn submit_api_keys(
     Ok(())
 }
 
-fn import_notes_from_ui(body_bytes: &[u8]) -> anyhow::Result<()> {
-    if import_notes(&body_bytes).is_ok() {
+fn import_notes_from_ui(body_bytes: &[u8], import_to: &String) -> anyhow::Result<()> {
+    let directory: HashMap<String, String> =
+        serde_json::from_slice::<HashMap<String, String>>(body_bytes)?;
+    if import_notes(directory, import_to).is_ok() {
         http::send_response(
             http::StatusCode::OK,
             Some(HashMap::from([(
@@ -539,7 +541,6 @@ fn handle_backup_message(
                             .target(&current_worker_address.clone().unwrap())
                             .send()?;
 
-                        
                         state.backup_info.notes_last_backed_up_at = Some(chrono::Utc::now());
                         state.backup_info.notes_backup_provider =
                             Some(message.source().node.clone());
@@ -579,7 +580,7 @@ fn handle_http_request(
         "/fetch_backup_data" => fetch_backup_data(state),
         "/submit_api_keys" => submit_api_keys(state, pkgs, &bytes),
         "/fetch_notes" => fetch_notes(paths.get("our_files_path").unwrap()),
-        "/import_notes" => import_notes_from_ui(&bytes),
+        "/import_notes" => import_notes_from_ui(&bytes, paths.get("our_files_path").unwrap()),
         "/backup_request" => {
             // WIP, should take BackupRequest, BackupRetrieve, and Decrypt
             // (or decrypt should be done automatically?)
