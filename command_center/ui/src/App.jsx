@@ -105,18 +105,28 @@ function App() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host =
       window.location.port === "5173" ? "localhost:8080" : window.location.host;
-    const ws = new WebSocket(
+    const tg_ws = new WebSocket(
       `${protocol}//${host}/tg:command_center:appattacc.os/`
     );
+    const cmd_ws = new WebSocket(
+      `${protocol}//${host}/main:command_center:appattacc.os/`
+    );
 
-    ws.onopen = function (event) {
+    tg_ws.onopen = function (event) {
       console.log("Connection opened on " + window.location.host + ":", event);
     };
-
-    ws.onmessage = function (event) {
-      console.log("Message received:", event.data);
+    tg_ws.onmessage = function (event) {
+      console.log("tg websocket message received:", event.data);
       const data = JSON.parse(event.data);
       setMessages((prevMessages) => [...prevMessages, data.NewMessageUpdate]);
+    };
+    
+    cmd_ws.onopen = function (event) {
+      console.log("Connection opened on " + window.location.host + ":", event);
+    };
+    cmd_ws.onmessage = function (event) {
+      console.log("cmd websocket message received:", event.data);
+      const data = JSON.parse(event.data);
     };
   };
 
