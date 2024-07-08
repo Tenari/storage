@@ -209,18 +209,16 @@ fn handle_ui_backup_request(
     state: &mut State,
     paths: &HashMap<&str, String>,
     current_worker_address: &mut Option<Address>,
-    message: &Message,
+    body: &[u8],
 ) -> anyhow::Result<()> {
-    match &message {
-        Message::Request { body, .. } => {
-            let deserialized = serde_json::from_slice::<UiRequest>(body)?;
-            match deserialized {
-                // making backup request to server
-                UiRequest::BackupRequest {
-                    node_id,
-                    password_hash,
-                    ..
-                } => {
+    let deserialized = serde_json::from_slice::<UiRequest>(body)?;
+    match deserialized {
+        // making backup request to server
+        UiRequest::BackupRequest {
+            node_id,
+            password_hash,
+            ..
+        } => {
                     // need password_hash to encrypt data with. necessary for decryption later.
                     // temporarily storing password_hash, as soon as we get a ServerResponse::Confirm, it's deleted
                     state.backup_info.data_password_hash = Some(password_hash.clone());
@@ -428,9 +426,7 @@ fn handle_ui_backup_request(
             println!("decryption done");
             Ok(())
         }
-        _ => return Ok(()),
-    }
-}
+
 
 // handles backup related messages from another node
 fn handle_backup_message(
@@ -440,12 +436,19 @@ fn handle_backup_message(
     current_worker_address: &mut Option<Address>,
     message: &Message,
 ) -> anyhow::Result<()> {
+    println!("HERE");
     match &message {
         Message::Request { body, .. } => {
+            println!("HERE1");
+
             let deserialized: ClientRequest = serde_json::from_slice::<ClientRequest>(body)?;
+            println!("HERE2");
+
             match deserialized {
                 // server receiving backup request from client
                 ClientRequest::BackupRequest { size } => {
+                    println!("HERE3");
+
                     // TODO: add criterion here
                     // whether we want to provide backup or not.
                     // currently responds with Confirm, should respond with Confirm or Decline based on a setting
@@ -455,6 +458,8 @@ fn handle_backup_message(
                         .backups_time_map
                         .insert(message.source().node.to_string(), chrono::Utc::now());
                     state.save();
+                    println!("HERE4");
+
 
                     initialize_worker(our.clone(), current_worker_address)?;
 
@@ -465,6 +470,7 @@ fn handle_backup_message(
                     )?;
                     let _resp: Result<(), anyhow::Error> =
                         Response::new().body(backup_response).send();
+                    println!("HERE5");
 
                     // telling the worker to start receiving the backup
                     let _worker_request = Request::new()
@@ -479,6 +485,8 @@ fn handle_backup_message(
                         )?)
                         .target(&current_worker_address.clone().unwrap())
                         .send()?;
+                    println!("HERE6");
+
                 }
                 // server receiving backup retrieval request from client
                 ClientRequest::BackupRetrieve { worker_address } => {
@@ -565,9 +573,11 @@ fn handle_backup_message(
 
 // handles requests from the ui
 fn handle_http_request(
+    our: &Address,
     state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
     paths: &HashMap<&str, String>,
+    current_worker_address: &mut Option<Address>,
     body: &[u8],
 ) -> anyhow::Result<()> {
     let http_request = http::HttpServerRequest::from_bytes(body)?
@@ -587,10 +597,12 @@ fn handle_http_request(
             // WIP, should take BackupRequest, BackupRetrieve, and Decrypt
             // (or decrypt should be done automatically?)
             println!("got /backup_request");
-            let deserialized: Result<serde_json::Value, _> = serde_json::from_slice(&bytes);
+            let deserialized: Result<UiRequest, _> = serde_json::from_slice(&bytes);
             match deserialized {
                 Ok(value) => {
+
                     println!("Deserialized backup request: {:?}", value);
+                    handle_ui_backup_request(our, state, paths, current_worker_address, &bytes);
                     Ok(())
                 }
                 Err(e) => {
@@ -608,13 +620,15 @@ fn handle_http_request(
 }
 
 fn handle_http_message(
+    our: &Address,
     state: &mut State,
     pkgs: &HashMap<Pkg, Address>,
     paths: &HashMap<&str, String>,
+    current_worker_address: &mut Option<Address>,
     message: &Message,
 ) -> anyhow::Result<()> {
     match message {
-        Message::Request { ref body, .. } => handle_http_request(state, pkgs, paths, body),
+        Message::Request { ref body, .. } => handle_http_request(our, state, pkgs, paths, current_worker_address, body),
         Message::Response { .. } => Ok(()),
     }
 }
@@ -635,7 +649,7 @@ fn handle_message(
     if let "http_server:distro:sys" | "http_client:distro:sys" =
         message.source().process.to_string().as_str()
     {
-        return handle_http_message(state, pkgs, paths, &message);
+        return handle_http_message(our, state, pkgs, paths, current_worker_address, &message);
     }
 
     // current worker finishing up
@@ -649,10 +663,10 @@ fn handle_message(
             }
         }
     }
-
+    
     // helper for debugging. remove for prod.
     // it takes inputs from the teriminal
-    handle_ui_backup_request(our, state, paths, current_worker_address, &message)
+    handle_ui_backup_request(our, state, paths, current_worker_address, &message.body())
 }
 
 const ICON: &str = include_str!("icon");

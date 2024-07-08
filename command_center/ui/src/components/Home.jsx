@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import '../App.css';
 import Config from './tab/Config';
 import DataCenter from './tab/DataCenter';
-import ImportNotes from './tab/ImportNotes';
+import NotesConfig from './tab/NotesConfig';
 import Notes from './tab/Notes';
 import ProvidedBackups from './tab/ProvidedBackups';
 
@@ -97,14 +97,19 @@ function Home({
             <div className="tab">
                 <button id="configTab" className="tablinks" onClick={() => setActiveTab('Config')}>Config</button>
                 <button id="dataCenterTab" className="tablinks" onClick={() => setActiveTab('Data Center')}>Data Center</button>
-                <button id="importNotesTab" className="tablinks" onClick={() => setActiveTab('Import Notes')}>Import Notes</button>
+                <button id="notesConfigTab" className="tablinks" onClick={() => setActiveTab('Notes Config')}>Notes Config</button>
                 <button id="notesTab" className="tablinks" onClick={() => setActiveTab('Notes')}>Notes</button>
                 <button id="providedBackups" className="tablinks" onClick={() => setActiveTab('Provided Backups')}>Provided Backups</button>
             </div>
             <div className="h-screen w-screen overflow-hidden flex-col-center items-center justify-center gap-2">
             <Config fetchApiKeys={fetchApiKeys}></Config>
             <DataCenter messages={messages}></DataCenter>
-            <ImportNotes importNotes={importNotes}></ImportNotes>
+            <NotesConfig 
+                importNotes={importNotes}
+                notesBackupProvider={notesBackupProvider} 
+                notesBackedUpAt={notesBackedUpAt} 
+                lastBackupSize={lastBackupSize} 
+            ></NotesConfig>
             <Notes 
                 searchNotes={searchNotes}
                 notesBackupProvider={notesBackupProvider} 

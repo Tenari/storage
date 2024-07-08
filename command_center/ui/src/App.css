@@ -896,7 +896,11 @@ input[type=text] {
 
 input[type=file],
 
-input[type=password],
+input[type=password] {
+    background-color: rgba(158, 158, 158, 0.478);
+    padding: 8px !important;
+    border-radius: 4px !important;
+}
 input[type=checkbox] {
     border-width: 1px;
     border-width: 2px;
@@ -1048,6 +1052,10 @@ button:disabled {
 }
 
 input[type="text"] {
+    min-width: 300px;
+    align-self: stretch;
+}
+input[type="password"] {
     min-width: 300px;
     align-self: stretch;
 }
