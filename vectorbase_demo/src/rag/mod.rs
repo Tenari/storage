@@ -69,21 +69,22 @@ pub fn generate_rag_response(
 
     let link_content = parse_and_fetch_content(&links)?;
 
-    let combined_content = if DEBUG {
+    if DEBUG {
         println!("DEBUG: We're in debug mode, not printing everything.");
         println!("DEBUG: state.base_context would be {} lines long.", state.base_context.lines().count());
-        format!("DEBUG_BASE_CONTEXT\n\n{}", link_content)
-    } else {
-        format!("{}\n\n{}", state.base_context, link_content)
     };
-    let rag_response = RAGResponse::RAG(combined_content.clone());
+    let rag_response = RAGResponse::RAG {
+        base_prompt: state.base_context.clone(),
+        link_prompt: link_content.clone(),
+    };
 
     Ok(rag_response)
 }
 
 fn call_claude(prompt: String) -> Result<String> {
     let claude_request = ClaudeChatRequestBuilder::default()
-        .model("claude-3-opus-20240229".to_string())
+        .model("claude-3-haiku-20240307".to_string())
+        // .model("claude-3-5-sonnet-20240620".to_string())
         .messages(vec![MessageBuilder::default()
             .role("user".to_string())
             .content(prompt)
@@ -95,7 +96,7 @@ fn call_claude(prompt: String) -> Result<String> {
 
     let response = Request::to(crate::LLM_ADDRESS)
         .body(llm_request)
-        .send_and_await_response(30)??;
+        .send_and_await_response(60)??;
 
     let LLMResponse::ClaudeChat(chat) = serde_json::from_slice(response.body())? else {
         return Err(anyhow::anyhow!("Failed to parse LLM response"));
@@ -140,7 +141,7 @@ pub fn fetch_github_content(url: &str) -> Result<String> {
             "Accept".to_string(),
             "application/vnd.github.v3.raw".to_string(),
         )])),
-        30,         // timeout in seconds
+        60,         // timeout in seconds
         Vec::new(), // empty body for GET request
     )?;
 
@@ -161,7 +162,7 @@ pub fn test_rag_functionality(state: &mut State) -> anyhow::Result<String> {
     let test_rag_type = RAGType::Naive;
 
     match generate_rag_response(state, test_prompt, test_rag_type)? {
-        RAGResponse::RAG(response) => Ok(response),
+        RAGResponse::RAG{ base_prompt, link_prompt } => Ok(format!("{}\n\n{}", base_prompt, link_prompt)),
         RAGResponse::Error(error) => Ok(format!("Error: {}", error)),
     }
 }
