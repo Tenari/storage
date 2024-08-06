@@ -1,10 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "command_center",
-    "ai_chatbot_demo",
     "storage", 
-    "vectorbase_demo"
 ]
 
 [profile.release]
