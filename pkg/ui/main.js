@@ -26,10 +26,13 @@ export async function fetchStatus() {
     if (data.groq_key) {
       document.getElementById('groqKey').value = data.groq_key;
     }
+    if (data.claude_key) {
+      document.getElementById('claudeKey').value = data.claude_key;
+    }
     if (data.groq_key && data.openai_key && data.telegram_key) {
       document.getElementById('result').innerHTML =
         `<ul>
-          <li> Congrats! You have submitted all 3 API keys.</li>
+          <li> Congrats! You have submitted all 4 API keys.</li>
           <li> - Go to your Telegram <a href="https://t.me/your_new_bot" target="_blank"> @botfather</a> chat.</li>
           <li> - Click on the link which he provided (e.g. "t.me/your_new_bot").</li>
           <li> - Try sending it a voice or a text message and see what happens!</li>
